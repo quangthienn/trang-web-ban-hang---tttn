@@ -2,10 +2,14 @@ import React, { useState } from 'react';
 import AdminDashboard from './AdminDashboard';
 import ManageStaff from './ManageStaff';
 import ManageMenu from './ManageMenu';
+import ChangePasswordModal from '../components/ChangePasswordModal'; // 👈 1. Import Modal vào đây
 
 function AdminLayout({ currentUser, onLogout }) {
   // Tab mặc định khi Admin đăng nhập vào là Trang Thống Kê
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'staff' | 'menu'
+  
+  // 👈 2. Quản lý trạng thái Ẩn/Hiện bảng Đổi mật khẩu
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   return (
     <div style={{ backgroundColor: '#f3f4f6', minHeight: '100vh', fontFamily: 'sans-serif' }}>
@@ -25,10 +29,29 @@ function AdminLayout({ currentUser, onLogout }) {
           <h2 style={{ margin: 0, color: '#fbbf24', fontSize: '20px' }}>👑 HỆ THỐNG QUẢN TRỊ</h2>
         </div>
 
-        <div>
-          <span style={{ marginRight: '15px', color: '#d1d5db', fontSize: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ marginRight: '5px', color: '#d1d5db', fontSize: '14px' }}>
             Xin chào, <strong>{currentUser?.name || 'Admin'}</strong>
           </span>
+
+          {/* 🔑 3. NÚT ĐỔI MẬT KHẨU MỚI BỔ SUNG */}
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 14px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
+          >
+            🔑 Đổi Mật Khẩu
+          </button>
+
+          {/* 🚪 NÚT ĐĂNG XUẤT */}
           <button
             onClick={onLogout}
             style={{
@@ -112,6 +135,14 @@ function AdminLayout({ currentUser, onLogout }) {
         {activeTab === 'staff' && <ManageStaff />}
         {activeTab === 'menu' && <ManageMenu />}
       </main>
+
+      {/* 🔑 4. BẢNG BẬT LÊN KHI BẤM NÚT ĐỔI MẬT KHẨU */}
+      {showPasswordModal && (
+        <ChangePasswordModal 
+          currentUser={currentUser} 
+          onClose={() => setShowPasswordModal(false)} 
+        />
+      )}
     </div>
   );
 }

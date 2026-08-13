@@ -26,7 +26,7 @@ router.post('/', async (req, res) => {
       username: username.trim(), 
       password: password.trim(), 
       name: name.trim(), 
-      role: role.toUpperCase() // 👈 Ép về chữ HOA (ADMIN, WAITER, KITCHEN, CASHIER)
+      role: role.toUpperCase() // Ép về chữ HOA (ADMIN, WAITER, KITCHEN, CASHIER)
     });
 
     const savedUser = await newUser.save();
@@ -41,7 +41,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// 3. 🔐 API ĐĂNG NHẬP CHO TẤT CẢ NHÂN VIÊN (Mới bổ sung)
+// 3. 🔐 API ĐĂNG NHẬP CHO TẤT CẢ NHÂN VIÊN
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -63,7 +63,39 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// 4. Admin xóa nhân viên
+// 4. 🔑 API ĐỔI MẬT KHẨU (Cho cả Admin & Nhân viên)
+router.put('/change-password', async (req, res) => {
+  try {
+    const { userId, oldPassword, newPassword } = req.body;
+
+    if (!userId || !oldPassword || !newPassword) {
+      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin!' });
+    }
+
+    // 1. Tìm user theo ID
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy tài khoản!' });
+    }
+
+    // 2. Kiểm tra mật khẩu cũ
+    if (user.password !== oldPassword.trim()) {
+      return res.status(400).json({ message: 'Mật khẩu cũ không chính xác!' });
+    }
+
+    // 3. Cập nhật mật khẩu mới
+    user.password = newPassword.trim();
+    await user.save();
+
+    console.log(`✅ Đã đổi mật khẩu thành công cho tài khoản: ${user.username}`);
+    res.json({ message: 'Đổi mật khẩu thành công!' });
+  } catch (error) {
+    console.error('❌ Lỗi đổi mật khẩu:', error);
+    res.status(500).json({ message: 'Lỗi Server khi đổi mật khẩu', error: error.message });
+  }
+});
+
+// 5. Admin xóa nhân viên
 router.delete('/:id', async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
