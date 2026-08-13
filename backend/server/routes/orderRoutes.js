@@ -19,7 +19,7 @@ router.post('/', async (req, res) => {
     const { tableId, tableCode, tableName, items, totalAmount } = req.body;
 
     const newOrder = new Order({
-      tableId, // Lưu thêm tableId để dễ truy vấn thanh toán sau này
+      tableId,
       tableCode: tableCode || tableName,
       tableName,
       items,
@@ -46,18 +46,18 @@ router.post('/', async (req, res) => {
 });
 
 // ==========================================
-// 3. THÊM MỚI: TẠO MÃ VIETQR CHUYỂN KHOẢN (THU NGÂN)
+// 3. TẠO MÃ VIETQR CHUYỂN KHOẢN (MB BANK)
 // ==========================================
 router.post('/:id/create-qr', async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
 
-    // Thông tin tài khoản nhà hàng L'Amour
-    const BANK_ID = 'MB';          // Tên ngân hàng (MB, VCB, TCB, ICB...)
-    const ACCOUNT_NO = '0999999999'; // Số tài khoản nhà hàng
-    const ACCOUNT_NAME = 'NHA HANG LAMOUR';
-    const memo = `LAMOUR ${order._id.toString().slice(-6).toUpperCase()}`;
+    // Thông tin tài khoản MB Bank
+    const BANK_ID = 'MB';                   
+    const ACCOUNT_NO = '0352239768';        
+    const ACCOUNT_NAME = 'NGUYEN QUANG THIEN'; 
+    const memo = `TT ban ${order.tableName} ${order._id.toString().slice(-4)}`;
 
     // Tạo URL mã VietQR tự động
     const qrImageUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${order.totalAmount}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`;
@@ -74,13 +74,12 @@ router.post('/:id/create-qr', async (req, res) => {
 });
 
 // ==========================================
-// 4. THÊM MỚI: XÁC NHẬN THANH TOÁN (TIỀN MẶT HẶC CHUYỂN KHOẢN)
+// 4. XÁC NHẬN THANH TOÁN (TIỀN MẶT HOẶC CHUYỂN KHOẢN)
 // ==========================================
 router.post('/:id/pay', async (req, res) => {
   try {
-    const { paymentMethod } = req.body; // 'CASH' (Tiền mặt) hoặc 'BANK_TRANSFER' (Chuyển khoản)
+    const { paymentMethod } = req.body; // 'CASH' hoặc 'BANK_TRANSFER'
 
-    // 1. Cập nhật Order thành PAID
     const updatedOrder = await Order.findByIdAndUpdate(
       req.params.id,
       {
@@ -94,7 +93,6 @@ router.post('/:id/pay', async (req, res) => {
 
     if (!updatedOrder) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
 
-    // 2. Trả bàn về trạng thái AVAILABLE
     if (updatedOrder.tableId) {
       await Table.findByIdAndUpdate(updatedOrder.tableId, { status: 'AVAILABLE' });
     } else {
