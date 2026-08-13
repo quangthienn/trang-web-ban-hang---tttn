@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function WaiterInterface() {
   const [tables, setTables] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
@@ -13,9 +16,9 @@ function WaiterInterface() {
   const fetchData = async () => {
     try {
       const [resTables, resMenu, resOrders] = await Promise.all([
-        fetch('http://localhost:5000/api/tables').then(r => r.json()),
-        fetch('http://localhost:5000/api/menu').then(r => r.json()),
-        fetch('http://localhost:5000/api/orders').then(r => r.json())
+        fetch(`${API_URL}/api/tables`).then(r => r.json()),
+        fetch(`${API_URL}/api/menu`).then(r => r.json()),
+        fetch(`${API_URL}/api/orders`).then(r => r.json())
       ]);
 
       setTables(resTables);
@@ -106,14 +109,14 @@ function WaiterInterface() {
         status: 'PENDING'
       };
 
-      const res = await fetch('http://localhost:5000/api/orders', {
+      const res = await fetch(`${API_URL}/api/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
       });
 
       // 2. Ép cập nhật trạng thái Bàn qua API Bàn
-      await fetch(`http://localhost:5000/api/tables/${selectedTable._id}`, {
+      await fetch(`${API_URL}/api/tables/${selectedTable._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'OCCUPIED' })
@@ -137,7 +140,7 @@ function WaiterInterface() {
 
     setLoading(true);
     try {
-      await fetch(`http://localhost:5000/api/tables/${selectedTable._id}`, {
+      await fetch(`${API_URL}/api/tables/${selectedTable._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'AVAILABLE' })
@@ -173,7 +176,7 @@ function WaiterInterface() {
         )}
       </div>
 
-      {/* DANH SÁCH 10 BÀN */}
+      {/* DANH SÁCH BÀN */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
         {tables.map((table) => {
           const isOccupied = checkIsOccupied(table);

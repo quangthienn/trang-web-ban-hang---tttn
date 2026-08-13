@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Đổi link localhost sang link Render Backend của bạn tại đây:
+const API_URL = 'https://trang-web-ban-hang---tttn.onrender.com';
+
 function AdminDashboard() {
   const [tables, setTables] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -9,12 +12,12 @@ function AdminDashboard() {
   const [fromDate, setFromDate] = useState(todayStr);
   const [toDate, setToDate] = useState(todayStr);
 
-  // 1️⃣ Lấy dữ liệu Bàn và Order từ Backend
+  // 1️⃣ Lấy dữ liệu Bàn và Order từ Backend Online
   const fetchData = async () => {
     try {
       const [resTables, resOrders] = await Promise.all([
-        fetch('http://localhost:5000/api/tables'),
-        fetch('http://localhost:5000/api/orders')
+        fetch(`${API_URL}/api/tables`),
+        fetch(`${API_URL}/api/orders`)
       ]);
 
       if (resTables.ok && resOrders.ok) {
@@ -33,20 +36,16 @@ function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2️⃣ Tính toán Thống kê theo Khoảng Ngày được chọn (Đã sửa lỗi lệch múi giờ)
+  // 2️⃣ Tính toán Thống kê theo Khoảng Ngày được chọn
   const filteredOrders = orders.filter((order) => {
-    // Kiểm tra trạng thái đơn đã thanh toán (Hỗ trợ cả 'PAID' hoặc 'COMPLETED')
     const isPaid = order.status === 'PAID' || order.status === 'COMPLETED';
     if (!isPaid) return false;
 
-    // Chuyển đổi ngày tạo đơn và mốc lọc về cùng mốc 00:00:00 và 23:59:59
     const orderDate = new Date(order.createdAt).getTime();
     
-    // Tạo ngày bắt đầu (00:00:00 của fromDate)
     const [fYear, fMonth, fDay] = fromDate.split('-');
     const start = new Date(fYear, fMonth - 1, fDay, 0, 0, 0, 0).getTime();
 
-    // Tạo ngày kết thúc (23:59:59 của toDate)
     const [tYear, tMonth, tDay] = toDate.split('-');
     const end = new Date(tYear, tMonth - 1, tDay, 23, 59, 59, 999).getTime();
 

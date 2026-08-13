@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function MenuSection() {
   const [menuItems, setMenuItems] = useState([]);
   const [activeCategory, setActiveCategory] = useState('Tất Cả');
   const [loading, setLoading] = useState(true);
 
-  // 🔄 Gọi API lấy danh sách món thực tế từ Database
+  // 🔄 Gọi API lấy danh sách món thực tế từ Database trên Render
   const fetchMenu = async () => {
     try {
-      // ⚠️ Đảm bảo đúng URL API lấy danh sách món của Backend (VD: /api/menu hoặc /api/dishes)
-      const res = await fetch('http://localhost:5000/api/menu'); 
+      const res = await fetch(`${API_URL}/api/menu`); 
       if (res.ok) {
         const data = await res.json();
         setMenuItems(data);
@@ -43,7 +45,7 @@ function MenuSection() {
           Thưởng thức những hương vị tinh hoa ẩm thực được chuẩn bị từ các siêu đầu bếp.
         </p>
 
-        {/* 🏷️ BỘ LỌC DANH MỤC (Nhiều món / Món chính / Hải sản / Tráng miệng...) */}
+        {/* 🏷️ BỘ LỌC DANH MỤC */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '40px' }}>
           {categories.map((cat) => (
             <button

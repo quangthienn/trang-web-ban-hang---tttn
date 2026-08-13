@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 // 🟢 BỔ SUNG 2 DÒNG NÀY ĐỂ ĂN LẠI GIAO DIỆN / TAILWIND CSS
 import './index.css';
 import './App.css';
@@ -39,7 +42,7 @@ function App() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/users/login', {
+      const res = await fetch(`${API_URL}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

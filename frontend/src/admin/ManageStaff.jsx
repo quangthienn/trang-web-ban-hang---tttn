@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online tại đây:
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function ManageStaff() {
   const [staffList, setStaffList] = useState([]);
   const [username, setUsername] = useState('');
@@ -10,7 +13,7 @@ function ManageStaff() {
   // 1. Tải danh sách nhân viên từ Backend
   const fetchStaff = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/users');
+      const res = await fetch(`${API_URL}/api/users`);
       const data = await res.json();
       setStaffList(data);
     } catch (error) {
@@ -30,7 +33,7 @@ function ManageStaff() {
     const newStaff = { username, password, name, role };
 
     try {
-      const res = await fetch('http://localhost:5000/api/users', {
+      const res = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newStaff)
@@ -53,8 +56,13 @@ function ManageStaff() {
   // 3. Xóa nhân viên
   const handleDeleteStaff = async (id) => {
     if (!window.confirm('Bạn có chắc muốn xóa nhân viên này?')) return;
-    await fetch(`http://localhost:5000/api/users/${id}`, { method: 'DELETE' });
-    fetchStaff();
+    try {
+      await fetch(`${API_URL}/api/users/${id}`, { method: 'DELETE' });
+      fetchStaff();
+    } catch (error) {
+      console.error('Lỗi xóa nhân viên:', error);
+      alert('❌ Lỗi kết nối Server!');
+    }
   };
 
   // Chuyển đổi mã Role sang tiếng Việt
@@ -131,7 +139,7 @@ function ManageStaff() {
           </thead>
           <tbody>
             {staffList.map((user) => (
-              <tr key={user._id} style={{ borderBottom: '1px solid #eee' }}>
+              <tr key={user._id || user.id} style={{ borderBottom: '1px solid #eee' }}>
                 <td style={{ padding: '10px' }}><code>{user.username}</code></td>
                 <td style={{ padding: '10px' }}><strong>{user.name}</strong></td>
                 <td style={{ padding: '10px' }}>
@@ -141,7 +149,7 @@ function ManageStaff() {
                 </td>
                 <td style={{ padding: '10px' }}>
                   <button
-                    onClick={() => handleDeleteStaff(user._id)}
+                    onClick={() => handleDeleteStaff(user._id || user.id)}
                     style={{ background: '#fee2e2', color: '#dc2626', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}
                   >
                     Xóa

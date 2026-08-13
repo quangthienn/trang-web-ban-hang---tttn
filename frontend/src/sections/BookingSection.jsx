@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 
+// 🌐 Khai báo link Backend Render Online tại đây:
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function BookingSection({ onBookTable }) {
   // Lấy ngày hôm nay làm mặc định (YYYY-MM-DD)
   const today = new Date().toISOString().split('T')[0];
@@ -36,7 +39,7 @@ function BookingSection({ onBookTable }) {
     });
   };
 
-  // ⚡ ĐÃ SỬA: Chuẩn hóa dữ liệu khớp với Schema Backend (customerName, bookingTime, tableCode)
+  // ⚡ ĐÃ SỬA: Chuẩn hóa dữ liệu khớp với Schema Backend & gọi API Render
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.fullName.trim() || !formData.phone.trim()) {
@@ -59,7 +62,7 @@ function BookingSection({ onBookTable }) {
         tableCode: 'PENDING' // Mã bàn mặc định cho đơn mới chờ xếp
       };
 
-      const response = await fetch('http://localhost:5000/api/bookings', {
+      const response = await fetch(`${API_URL}/api/bookings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -98,7 +101,7 @@ function BookingSection({ onBookTable }) {
       }
     } catch (error) {
       console.error('Lỗi khi đặt bàn:', error);
-      alert('❌ Lỗi kết nối đến máy chủ! Vui lòng kiểm tra lại xem Backend (port 5000) đã chạy chưa.');
+      alert('❌ Lỗi kết nối đến máy chủ! Vui lòng kiểm tra lại đường truyền hoặc máy chủ Render.');
     } finally {
       setIsSubmitting(false);
     }
@@ -374,7 +377,7 @@ const styles = {
     borderRadius: '8px',
     border: '1px solid #4b5563',
     alignItems: 'center',
-    justify: 'space-between'
+    justifyContent: 'space-between'
   },
   stepperBox: {
     display: 'flex',

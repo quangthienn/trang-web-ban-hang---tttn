@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function KitchenInterface() {
   const [orders, setOrders] = useState([]);
 
   // Tải các order chưa thanh toán
   const fetchOrders = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/orders');
+      const res = await fetch(`${API_URL}/api/orders`);
       if (res.ok) {
         const data = await res.json();
         // Chỉ lấy những món chưa phục vụ xong hoặc chưa thanh toán
@@ -26,7 +29,7 @@ function KitchenInterface() {
   // Đổi trạng thái Order (VD: Bắt đầu nấu -> Đã xong)
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
-      await fetch(`http://localhost:5000/api/orders/${orderId}`, {
+      await fetch(`${API_URL}/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -77,7 +80,7 @@ function KitchenInterface() {
                   padding: '16px',
                   display: 'flex',
                   flexDirection: 'column',
-                  justify: 'space-between'
+                  justifyContent: 'space-between'
                 }}
               >
                 <div>

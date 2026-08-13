@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 
+// 🌐 Khai báo link Backend Render Online tại đây:
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function LoginModal({ isOpen = true, onClose, onLoginSuccess }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +18,7 @@ function LoginModal({ isOpen = true, onClose, onLoginSuccess }) {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function CashierInterface() {
   const [activeTab, setActiveTab] = useState('TABLES'); // 'TABLES' (Sơ đồ bàn) hoặc 'BOOKINGS' (Danh sách đặt bàn)
   
@@ -17,7 +20,7 @@ function CashierInterface() {
   // 1️⃣ Lấy danh sách Bàn từ Backend
   const fetchTables = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/tables');
+      const res = await fetch(`${API_URL}/api/tables`);
       if (res.ok) {
         const data = await res.json();
         setTables(data);
@@ -31,9 +34,9 @@ function CashierInterface() {
   const fetchBookings = async () => {
     try {
       // Thử gọi đường dẫn /api/bookings (hoặc /api/reservations)
-      let res = await fetch('http://localhost:5000/api/bookings');
+      let res = await fetch(`${API_URL}/api/bookings`);
       if (!res.ok) {
-        res = await fetch('http://localhost:5000/api/reservations');
+        res = await fetch(`${API_URL}/api/reservations`);
       }
       if (res.ok) {
         const data = await res.json();
@@ -66,7 +69,7 @@ function CashierInterface() {
     setCurrentOrder(null);
 
     try {
-      const res = await fetch('http://localhost:5000/api/orders');
+      const res = await fetch(`${API_URL}/api/orders`);
       if (res.ok) {
         const orders = await res.json();
         const activeOrder = orders.find(
@@ -90,7 +93,7 @@ function CashierInterface() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/orders/${currentOrder._id}`, {
+      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -117,7 +120,7 @@ function CashierInterface() {
   // 5️⃣ Xử lý Cập nhật Trạng thái Đặt bàn (Xác nhận / Hủy / Nhận bàn)
   const handleUpdateBookingStatus = async (bookingId, newStatus) => {
     try {
-      let res = await fetch(`http://localhost:5000/api/bookings/${bookingId}`, {
+      let res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -125,7 +128,7 @@ function CashierInterface() {
 
       // Nếu route /api/bookings không tồn tại, thử route /api/reservations
       if (res.status === 404) {
-        res = await fetch(`http://localhost:5000/api/reservations/${bookingId}`, {
+        res = await fetch(`${API_URL}/api/reservations/${bookingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: newStatus })

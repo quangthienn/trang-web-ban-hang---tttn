@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// 🌐 Khai báo link Backend Render Online tại đây:
+const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
+
 function ManageMenu() {
   const [menuList, setMenuList] = useState([]);
   const [name, setName] = useState('');
@@ -9,10 +12,10 @@ function ManageMenu() {
   const [desc, setDesc] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 1. Lấy danh sách thực đơn từ Backend
+  // 1. Lấy danh sách thực đơn từ Backend Online
   const fetchMenu = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/menu');
+      const res = await fetch(`${API_URL}/api/menu`);
       const data = await res.json();
       setMenuList(data);
     } catch (error) {
@@ -39,7 +42,7 @@ function ManageMenu() {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/menu', {
+      const res = await fetch(`${API_URL}/api/menu`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newDish)
@@ -57,7 +60,7 @@ function ManageMenu() {
     }
   };
 
-  // 🗑️ 3. HÀM XÓA MÓN ĂN (Sửa đoạn này)
+  // 🗑️ 3. HÀM XÓA MÓN ĂN
   const handleDeleteMenuItem = async (id) => {
     if (!id) {
       alert('❌ Không tìm thấy ID món ăn!');
@@ -67,7 +70,7 @@ function ManageMenu() {
     if (!window.confirm('Bạn có chắc chắn muốn xóa món này khỏi Database?')) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/menu/${id}`, {
+      const res = await fetch(`${API_URL}/api/menu/${id}`, {
         method: 'DELETE'
       });
 
@@ -123,7 +126,6 @@ function ManageMenu() {
           </thead>
           <tbody>
             {menuList.map((item) => {
-              // Lấy ID chính xác của MongoDB là _id
               const itemId = item._id || item.id;
 
               return (
