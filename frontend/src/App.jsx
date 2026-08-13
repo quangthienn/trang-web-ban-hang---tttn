@@ -1,155 +1,156 @@
 import React, { useState, useEffect } from 'react';
+
+// 🟢 BỔ SUNG 2 DÒNG NÀY ĐỂ ĂN LẠI GIAO DIỆN / TAILWIND CSS
+import './index.css';
+import './App.css';
+
+// 🌐 Các phần trang chủ dành cho Khách
 import Navbar from './layouts/Navbar';
+import Footer from './layouts/Footer';
 import Hero from './sections/Hero';
 import MenuSection from './sections/MenuSection';
 import BookingSection from './sections/BookingSection';
-import Footer from './layouts/Footer';
+
+// 🔑 Giao diện Quản lý & Nhân viên
 import AdminLayout from './admin/AdminLayout';
 import StaffLayout from './staff/StaffLayout';
-import LoginModal from './components/Auth/LoginModal';
-import './App.css';
-
-// 1. Danh sách Bàn ban đầu
-const defaultTables = [
-  { id: 1, name: "Bàn 01 (Sảnh)", capacity: 2, status: 'AVAILABLE' },
-  { id: 2, name: "Bàn 02 (Sảnh)", capacity: 2, status: 'AVAILABLE' },
-  { id: 3, name: "Bàn 03 (Cửa sổ)", capacity: 4, status: 'AVAILABLE' },
-  { id: 4, name: "Bàn 04 (Cửa sổ)", capacity: 4, status: 'AVAILABLE' },
-  { id: 5, name: "Bàn VIP 05", capacity: 8, status: 'AVAILABLE' },
-];
-
-// 2. Tài khoản mặc định
-const defaultAccounts = [
-  { id: 1, username: 'admin', password: '123', name: 'Quản Lý Trưởng', role: 'ADMIN' },
-  { id: 2, username: 'nv01', password: '123', name: 'Trần Văn Phục Vụ', position: 'Phục vụ', role: 'STAFF' }
-];
-
-// 3. Menu món ăn
-const defaultMenu = [
-  { id: 1, name: "Sườn Cừu Nướng Thảo Mộc", price: "450.000đ", category: "Món Chính", desc: "Sườn cừu tươi nướng kèm sốt vang đỏ và khoai tây nghiền mịn.", image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=600" },
-  { id: 2, name: "Salad Cá Hồi Áp Chảo", price: "280.000đ", category: "Hải Sản", desc: "Cá hồi áp chảo, rau mầm hữu cơ cùng sốt chanh dây thanh mát.", image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600" },
-  { id: 3, name: "Pizza Hải Sản Hoàng Gia", price: "320.000đ", category: "Hải Sản", desc: "Tôm, mực, nghêu kết hợp lớp phô mai Mozzarella béo ngậy.", image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=600" },
-  { id: 4, name: "Bánh Kem Dâu Tây Pháp", price: "120.000đ", category: "Tráng Miệng", desc: "Bánh mousse dâu tây mềm mịn ngọt ngào chuẩn phong cách Pháp.", image: "https://images.unsplash.com/photo-1565958011703-44f9829ba187?q=80&w=600" }
-];
 
 function App() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
   const [currentUser, setCurrentUser] = useState(null);
-  const [menuList, setMenuList] = useState(defaultMenu);
-  
-  // State Bàn & Lượt Đặt Bàn (Tự động đồng bộ localStorage)
-  const [tables, setTables] = useState(() => {
-    const saved = localStorage.getItem('lamour_tables');
-    return saved ? JSON.parse(saved) : defaultTables;
-  });
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [bookings, setBookings] = useState(() => {
-    const saved = localStorage.getItem('lamour_bookings');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [accounts, setAccounts] = useState(() => {
-    const saved = localStorage.getItem('lamour_accounts');
-    return saved ? JSON.parse(saved) : defaultAccounts;
-  });
-
-  // Lưu tự động vào LocalStorage
-  useEffect(() => {
-    localStorage.setItem('lamour_tables', JSON.stringify(tables));
-  }, [tables]);
+  // Lấy đường dẫn URL hiện tại
+  const path = window.location.pathname;
 
   useEffect(() => {
-    localStorage.setItem('lamour_bookings', JSON.stringify(bookings));
-  }, [bookings]);
-
-  useEffect(() => {
-    localStorage.setItem('lamour_accounts', JSON.stringify(accounts));
-  }, [accounts]);
-
-  useEffect(() => {
-    const handleLocationChange = () => setCurrentPath(window.location.pathname);
-    window.addEventListener('popstate', handleLocationChange);
-    return () => window.removeEventListener('popstate', handleLocationChange);
+    const savedUser = sessionStorage.getItem('currentUser');
+    if (savedUser) {
+      setCurrentUser(JSON.parse(savedUser));
+    }
   }, []);
 
-  const navigateTo = (path) => {
-    window.history.pushState({}, '', path);
-    setCurrentPath(path);
-  };
+  // Xử lý Form Đăng nhập
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
 
-  // Khách bấm Đặt Bàn -> Tự động đổi trạng thái bàn sang RESERVED (Đã Đặt)
-  const handleBookTable = (newBooking) => {
-    setBookings([newBooking, ...bookings]);
-    setTables(tables.map(t => t.id === newBooking.tableId ? { ...t, status: 'RESERVED' } : t));
-  };
+    try {
+      const res = await fetch('http://localhost:5000/api/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim()
+        })
+      });
 
-  // Nhân viên cập nhật trạng thái Bàn
-  const handleUpdateTableStatus = (tableId, newStatus) => {
-    setTables(tables.map(t => t.id === tableId ? { ...t, status: newStatus } : t));
-  };
+      const data = await res.json();
 
-  const handleAddMenu = (newItem) => setMenuList([newItem, ...menuList]);
-  const handleDeleteMenu = (id) => {
-    if (window.confirm("Xóa món này khỏi thực đơn?")) {
-      setMenuList(menuList.filter(item => item.id !== id));
+      if (res.ok) {
+        sessionStorage.setItem('currentUser', JSON.stringify(data));
+        setCurrentUser(data);
+      } else {
+        setErrorMsg(data.message || 'Tên đăng nhập hoặc mật khẩu không đúng!');
+      }
+    } catch (err) {
+      setErrorMsg('❌ Lỗi kết nối tới Server Backend!');
+    } finally {
+      setLoading(false);
     }
   };
 
+  // Xử lý Đăng xuất
   const handleLogout = () => {
+    sessionStorage.removeItem('currentUser');
     setCurrentUser(null);
-    navigateTo('/');
+    setUsername('');
+    setPassword('');
   };
 
-  const isAdminRoute = currentPath === '/admin';
-
-  // Nếu truy cập vào /admin
-  if (isAdminRoute) {
+  // ========================================================
+  // 🔑 KHI GÕ `/admin` HOẶC `/staff` TRÊN URL
+  // ========================================================
+  if (path === '/admin' || path === '/staff') {
     if (!currentUser) {
       return (
-        <LoginModal 
-          accounts={accounts}
-          onLoginSuccess={(user) => setCurrentUser(user)} 
-          onClose={() => navigateTo('/')} 
-        />
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827', color: '#fff', fontFamily: 'sans-serif' }}>
+          <form onSubmit={handleLogin} style={{ background: '#1f2937', padding: '30px', borderRadius: '12px', width: '320px', boxShadow: '0 4px 15px rgba(0,0,0,0.4)' }}>
+            <h2 style={{ textAlign: 'center', color: '#fbbf24', marginTop: 0 }}>🔑 ĐĂNG NHẬP HỆ THỐNG</h2>
+
+            {errorMsg && (
+              <div style={{ background: '#ef4444', color: '#fff', padding: '10px', borderRadius: '6px', fontSize: '13px', marginBottom: '15px', textAlign: 'center', fontWeight: 'bold' }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: '#d1d5db' }}>Tên đăng nhập / Mã NV:</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="VD: admin, waiter01..."
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#111827', color: '#fff', boxSizing: 'border-box' }}
+                required
+              />
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: '#d1d5db' }}>Mật khẩu:</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Nhập mật khẩu..."
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#111827', color: '#fff', boxSizing: 'border-box' }}
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '12px',
+                background: loading ? '#6b7280' : '#10b981',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: 'bold',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: '15px'
+              }}
+            >
+              {loading ? '⏳ Đang xác thực...' : '🚀 ĐĂNG NHẬP'}
+            </button>
+          </form>
+        </div>
       );
     }
 
-    // Đăng nhập quyền ADMIN
     if (currentUser.role === 'ADMIN') {
-      return (
-        <AdminLayout 
-          currentUser={currentUser}
-          accounts={accounts}
-          onUpdateAccounts={setAccounts}
-          onExitAdmin={handleLogout} 
-          menuList={menuList} 
-          onAddMenu={handleAddMenu} 
-          onDeleteMenu={handleDeleteMenu} 
-        />
-      );
+      return <AdminLayout currentUser={currentUser} onLogout={handleLogout} />;
     }
 
-    // Đăng nhập quyền STAFF
-    if (currentUser.role === 'STAFF') {
-      return (
-        <StaffLayout 
-          currentUser={currentUser} 
-          tables={tables}
-          onUpdateTableStatus={handleUpdateTableStatus}
-          bookings={bookings}
-          onLogout={handleLogout} 
-        />
-      );
+    if (['WAITER', 'KITCHEN', 'CASHIER'].includes(currentUser.role)) {
+      return <StaffLayout currentUser={currentUser} onLogout={handleLogout} />;
     }
   }
 
-  // Giao diện Khách xem Web (Trang chủ /)
+  // ========================================================
+  // 🌐 TRANG CHỦ DÀNH CHO KHÁCH (Mặc định)
+  // ========================================================
   return (
     <div className="app-container">
       <Navbar />
       <Hero />
-      <MenuSection menuList={menuList} />
-      <BookingSection tables={tables} onBookTable={handleBookTable} />
+      <MenuSection />
+      <BookingSection />
       <Footer />
     </div>
   );

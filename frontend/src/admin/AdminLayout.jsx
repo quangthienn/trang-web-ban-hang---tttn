@@ -1,170 +1,119 @@
-// src/admin/AdminLayout.jsx
 import React, { useState } from 'react';
+import AdminDashboard from './AdminDashboard';
 import ManageStaff from './ManageStaff';
+import ManageMenu from './ManageMenu';
 
-const AdminLayout = ({ 
-  currentUser, 
-  accounts, 
-  onUpdateAccounts, 
-  onExitAdmin, 
-  menuList, 
-  onAddMenu, 
-  onDeleteMenu 
-}) => {
-  // State quản lý Tab đang chọn: 'menu' hoặc 'staff'
-  const [activeTab, setActiveTab] = useState('menu');
-
-  // State cho Form Thêm Món
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('Món Chính');
-  const [desc, setDesc] = useState('');
-  const [image, setImage] = useState('');
-
-  const handleFormSubmit = (e) => {
-    e.preventDefault();
-    if (!name || !price) return alert("Vui lòng điền tên và giá món!");
-    
-    onAddMenu({
-      id: Date.now(),
-      name,
-      price: price.includes('đ') ? price : `${price}đ`,
-      category,
-      desc,
-      image: image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600"
-    });
-
-    setName('');
-    setPrice('');
-    setDesc('');
-    setImage('');
-    alert("Thêm món vào thực đơn thành công!");
-  };
+function AdminLayout({ currentUser, onLogout }) {
+  // Tab mặc định khi Admin đăng nhập vào là Trang Thống Kê
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'staff' | 'menu'
 
   return (
-    <div className="admin-wrapper">
-      {/* 1. THANH MENU BÊN TRÁI (SIDEBAR) */}
-      <div className="admin-sidebar">
-        <div className="admin-logo">
-          L’Amour <span>Admin</span>
+    <div style={{ backgroundColor: '#f3f4f6', minHeight: '100vh', fontFamily: 'sans-serif' }}>
+      {/* 👑 HEADER ADMIN */}
+      <header
+        style={{
+          background: '#1f2937',
+          color: '#fff',
+          padding: '15px 25px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <h2 style={{ margin: 0, color: '#fbbf24', fontSize: '20px' }}>👑 HỆ THỐNG QUẢN TRỊ</h2>
         </div>
 
-        <div style={{ marginBottom: '20px', fontSize: '13px', color: '#94a3b8' }}>
-          👋 Xin chào, <strong>{currentUser?.name || 'Admin'}</strong>
+        <div>
+          <span style={{ marginRight: '15px', color: '#d1d5db', fontSize: '14px' }}>
+            Xin chào, <strong>{currentUser?.name || 'Admin'}</strong>
+          </span>
+          <button
+            onClick={onLogout}
+            style={{
+              background: '#ef4444',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '13px'
+            }}
+          >
+            🚪 Đăng Xuất
+          </button>
         </div>
+      </header>
 
-        <ul className="sidebar-menu">
-          <li 
-            className={activeTab === 'menu' ? 'active' : ''} 
-            onClick={() => setActiveTab('menu')}
-          >
-            🍽️ Quản lý Menu
-          </li>
-          <li 
-            className={activeTab === 'staff' ? 'active' : ''} 
-            onClick={() => setActiveTab('staff')}
-          >
-            👥 Quản lý Nhân sự
-          </li>
-        </ul>
+      {/* 📌 THANH MENU ĐIỀU HƯỚNG TAB */}
+      <div
+        style={{
+          background: '#fff',
+          padding: '0 25px',
+          borderBottom: '1px solid #e5e7eb',
+          display: 'flex',
+          gap: '10px'
+        }}
+      >
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          style={{
+            padding: '14px 20px',
+            border: 'none',
+            background: 'transparent',
+            borderBottom: activeTab === 'dashboard' ? '3px solid #3b82f6' : '3px solid transparent',
+            color: activeTab === 'dashboard' ? '#3b82f6' : '#6b7280',
+            fontWeight: 'bold',
+            fontSize: '15px',
+            cursor: 'pointer'
+          }}
+        >
+          📊 Thống Kê Doanh Thu & Bàn
+        </button>
 
-        <button className="btn-exit-admin" onClick={onExitAdmin}>
-          🚪 Đăng xuất / Thoát
+        <button
+          onClick={() => setActiveTab('staff')}
+          style={{
+            padding: '14px 20px',
+            border: 'none',
+            background: 'transparent',
+            borderBottom: activeTab === 'staff' ? '3px solid #3b82f6' : '3px solid transparent',
+            color: activeTab === 'staff' ? '#3b82f6' : '#6b7280',
+            fontWeight: 'bold',
+            fontSize: '15px',
+            cursor: 'pointer'
+          }}
+        >
+          👥 Quản Lý Nhân Viên
+        </button>
+
+        <button
+          onClick={() => setActiveTab('menu')}
+          style={{
+            padding: '14px 20px',
+            border: 'none',
+            background: 'transparent',
+            borderBottom: activeTab === 'menu' ? '3px solid #3b82f6' : '3px solid transparent',
+            color: activeTab === 'menu' ? '#3b82f6' : '#6b7280',
+            fontWeight: 'bold',
+            fontSize: '15px',
+            cursor: 'pointer'
+          }}
+        >
+          🍔 Quản Lý Thực Đơn
         </button>
       </div>
 
-      {/* 2. NỘI DUNG CHÍNH (MAIN CONTENT) */}
-      <div className="admin-main">
-        {activeTab === 'menu' ? (
-          /* --- TAB 1: QUẢN LÝ MENU --- */
-          <div className="admin-content">
-            <h2>🍽️ Quản Lý Thực Đơn (Menu)</h2>
-
-            {/* FORM THÊM MÓN */}
-            <div className="admin-form">
-              <h3>➕ Thêm Món Ăn Mới</h3>
-              <form onSubmit={handleFormSubmit}>
-                <div className="form-grid">
-                  <input 
-                    type="text" 
-                    placeholder="Tên món ăn" 
-                    value={name} 
-                    onChange={(e) => setName(e.target.value)} 
-                    required 
-                  />
-                  <input 
-                    type="text" 
-                    placeholder="Giá (VD: 250.000đ)" 
-                    value={price} 
-                    onChange={(e) => setPrice(e.target.value)} 
-                    required 
-                  />
-                  <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                    <option value="Món Chính">Món Chính</option>
-                    <option value="Hải Sản">Hải Sản</option>
-                    <option value="Tráng Miệng">Tráng Miệng</option>
-                  </select>
-                  <input 
-                    type="text" 
-                    placeholder="Link hình ảnh (URL)" 
-                    value={image} 
-                    onChange={(e) => setImage(e.target.value)} 
-                  />
-                </div>
-                <textarea 
-                  placeholder="Mô tả món ăn ngắn gọn..." 
-                  rows="2"
-                  value={desc} 
-                  onChange={(e) => setDesc(e.target.value)} 
-                ></textarea>
-                <button type="submit" className="btn-add" style={{ marginTop: '10px' }}>
-                  ➕ Thêm Vào Thực Đơn
-                </button>
-              </form>
-            </div>
-
-            {/* DANH SÁCH MÓN ĂN */}
-            <h3>📋 Danh Sách Món Ăn ({menuList.length})</h3>
-            <table className="admin-table" style={{ marginTop: '15px' }}>
-              <thead>
-                <tr>
-                  <th>Ảnh</th>
-                  <th>Tên Món</th>
-                  <th>Danh Mục</th>
-                  <th>Giá Bán</th>
-                  <th>Hành Động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {menuList.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <img src={item.image} alt={item.name} className="table-img" />
-                    </td>
-                    <td><strong>{item.name}</strong></td>
-                    <td><span className="badge">{item.category}</span></td>
-                    <td><strong style={{ color: '#c59d5f' }}>{item.price}</strong></td>
-                    <td>
-                      <button className="btn-delete" onClick={() => onDeleteMenu(item.id)}>
-                        🗑️ Xóa
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          /* --- TAB 2: QUẢN LÝ NHÂN SỰ --- */
-          <ManageStaff 
-            accounts={accounts} 
-            onUpdateAccounts={onUpdateAccounts} 
-            currentUser={currentUser} 
-          />
-        )}
-      </div>
+      {/* 🖥️ NỘI DUNG HIỂN THỊ THEO TAB ĐƯỢC CHỌN */}
+      <main style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        {activeTab === 'dashboard' && <AdminDashboard />}
+        {activeTab === 'staff' && <ManageStaff />}
+        {activeTab === 'menu' && <ManageMenu />}
+      </main>
     </div>
   );
-};
+}
 
 export default AdminLayout;

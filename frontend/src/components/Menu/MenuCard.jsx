@@ -12,7 +12,8 @@ const MenuCard = ({ item }) => {
           <span className="price">{item.price}</span>
         </div>
         <p>{item.desc}</p>
-        <button className="btn-order-sm">Thêm vào hóa đơn</button>
+        
+        {/* Khách chỉ xem menu, không bấm đặt ở đây nữa */}
       </div>
     </div>
   );
