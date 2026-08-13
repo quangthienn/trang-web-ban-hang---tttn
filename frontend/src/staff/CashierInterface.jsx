@@ -14,6 +14,10 @@ function CashierInterface() {
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // State Quản lý QR Chuyển khoản
+  const [qrData, setQrData] = useState(null);
+  const [loadingQr, setLoadingQr] = useState(false);
+
   // State Quản lý Đặt bàn
   const [bookings, setBookings] = useState([]);
 
@@ -33,7 +37,6 @@ function CashierInterface() {
   // 2️⃣ Lấy danh sách Đặt bàn từ Backend
   const fetchBookings = async () => {
     try {
-      // Thử gọi đường dẫn /api/bookings (hoặc /api/reservations)
       let res = await fetch(`${API_URL}/api/bookings`);
       if (!res.ok) {
         res = await fetch(`${API_URL}/api/reservations`);
@@ -51,7 +54,6 @@ function CashierInterface() {
     fetchTables();
     fetchBookings();
 
-    // Tự động làm mới dữ liệu Bàn và Lịch đặt mỗi 5 giây
     const interval = setInterval(() => {
       fetchTables();
       fetchBookings();
@@ -67,6 +69,8 @@ function CashierInterface() {
     setSelectedTable(table);
     setLoadingOrder(true);
     setCurrentOrder(null);
+    setQrData(null);
+    setPaymentMethod('CASH');
 
     try {
       const res = await fetch(`${API_URL}/api/orders`);
@@ -87,28 +91,52 @@ function CashierInterface() {
     }
   };
 
-  // 4️⃣ Xử lý Xác nhận Thanh toán hóa đơn
+  // 4️⃣ Gọi API tạo mã VietQR khi chọn hình thức Chuyển khoản
+  const handleGenerateQR = async (orderId) => {
+    setLoadingQr(true);
+    try {
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/create-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setQrData(data); // Lưu thông tin qrImageUrl và memo
+      } else {
+        alert(`❌ ${data.message || 'Không thể tạo mã QR!'}`);
+      }
+    } catch (err) {
+      console.error('Lỗi tạo QR:', err);
+      alert('❌ Lỗi kết nối khi tạo mã QR!');
+    } finally {
+      setLoadingQr(false);
+    }
+  };
+
+  // 5️⃣ Xử lý Xác nhận Thanh toán hóa đơn (Dùng chung cho cả Cash và Transfer)
   const handleConfirmPayment = async () => {
     if (!currentOrder) return;
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}`, {
-        method: 'PATCH',
+      // Gọi đúng endpoint /pay mới của Backend để tự động nhả bàn về AVAILABLE
+      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/pay`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: 'PAID',
-          paymentMethod: paymentMethod
+          paymentMethod: paymentMethod === 'TRANSFER' ? 'BANK_TRANSFER' : 'CASH'
         })
       });
 
       if (res.ok) {
-        alert(`✅ Thanh toán thành công cho ${selectedTable.name}!`);
+        alert(`✅ Thanh toán thành công cho ${selectedTable.name}! Bàn đã được giải phóng.`);
         setSelectedTable(null);
         setCurrentOrder(null);
+        setQrData(null);
         fetchTables();
       } else {
-        alert('❌ Lỗi cập nhật trạng thái thanh toán!');
+        const errData = await res.json().catch(() => ({}));
+        alert(`❌ Lỗi thanh toán: ${errData.message || 'Không thể cập nhật trạng thái!'}`);
       }
     } catch (err) {
       alert('❌ Lỗi kết nối máy chủ!');
@@ -117,7 +145,7 @@ function CashierInterface() {
     }
   };
 
-  // 5️⃣ Xử lý Cập nhật Trạng thái Đặt bàn (Xác nhận / Hủy / Nhận bàn)
+  // 6️⃣ Xử lý Cập nhật Trạng thái Đặt bàn
   const handleUpdateBookingStatus = async (bookingId, newStatus) => {
     try {
       let res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
@@ -126,7 +154,6 @@ function CashierInterface() {
         body: JSON.stringify({ status: newStatus })
       });
 
-      // Nếu route /api/bookings không tồn tại, thử route /api/reservations
       if (res.status === 404) {
         res = await fetch(`${API_URL}/api/reservations/${bookingId}`, {
           method: 'PATCH',
@@ -148,7 +175,6 @@ function CashierInterface() {
     }
   };
 
-  // Hàm hỗ trợ hiển thị Ngày & Giờ linh hoạt
   const renderDateTime = (item) => {
     if (item.bookingTime) {
       const dateObj = new Date(item.bookingTime);
@@ -163,8 +189,6 @@ function CashierInterface() {
         );
       }
     }
-    
-    // Nếu không dùng bookingTime thì hiển thị theo date & time riêng lẻ
     if (item.date || item.time) {
       return (
         <>
@@ -173,11 +197,9 @@ function CashierInterface() {
         </>
       );
     }
-
     return <span style={{ color: '#9ca3af' }}>Chưa rõ thời gian</span>;
   };
 
-  // Số lượng đơn đặt bàn mới (PENDING)
   const pendingCount = bookings.filter((b) => b.status === 'PENDING' || !b.status).length;
 
   return (
@@ -191,7 +213,6 @@ function CashierInterface() {
           </p>
         </div>
 
-        {/* NÚT CHUYỂN TAB */}
         <div style={{ display: 'flex', gap: '10px', background: '#1f2937', padding: '6px', borderRadius: '10px' }}>
           <button
             onClick={() => setActiveTab('TABLES')}
@@ -313,34 +334,25 @@ function CashierInterface() {
                 <tbody>
                   {bookings.map((item) => (
                     <tr key={item._id} style={{ borderBottom: '1px solid #374151', fontSize: '14px' }}>
-                      {/* Đọc linh hoạt customerName hoặc fullName */}
                       <td style={{ padding: '12px', fontWeight: 'bold' }}>
                         {item.customerName || item.fullName || 'Khách chưa để lại tên'}
                       </td>
                       <td style={{ padding: '12px', color: '#60a5fa' }}>
                         {item.phone || 'Chưa có SĐT'}
                       </td>
-                      
-                      {/* Hàm hiển thị Ngày Giờ tự động format */}
-                      <td style={{ padding: '12px' }}>
-                        {renderDateTime(item)}
-                      </td>
-
+                      <td style={{ padding: '12px' }}>{renderDateTime(item)}</td>
                       <td style={{ padding: '12px' }}>
                         👥 {item.adults || item.guests || 1} người lớn
                         {item.children > 0 && `, ${item.children} trẻ em`}
                       </td>
-                      
                       <td style={{ padding: '12px', color: '#9ca3af', fontStyle: 'italic', maxWidth: '200px' }}>
                         {item.note || 'Không có'}
                       </td>
-
                       <td style={{ padding: '12px' }}>
                         {item.status === 'CONFIRMED' && <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Đã xác nhận</span>}
                         {item.status === 'CANCELLED' && <span style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ Đã hủy</span>}
                         {(!item.status || item.status === 'PENDING') && <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⏳ Mới / Chờ duyệt</span>}
                       </td>
-
                       <td style={{ padding: '12px', textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                           {item.status !== 'CONFIRMED' && (
@@ -389,7 +401,9 @@ function CashierInterface() {
           <div
             style={{
               background: '#1f2937',
-              width: '420px',
+              width: '450px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
               borderRadius: '12px',
               padding: '25px',
               boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
@@ -397,7 +411,7 @@ function CashierInterface() {
             }}
           >
             <button
-              onClick={() => setSelectedTable(null)}
+              onClick={() => { setSelectedTable(null); setQrData(null); }}
               style={{
                 position: 'absolute',
                 top: '15px',
@@ -426,7 +440,7 @@ function CashierInterface() {
               <div>
                 <div
                   style={{
-                    maxHeight: '200px',
+                    maxHeight: '180px',
                     overflowY: 'auto',
                     margin: '15px 0',
                     background: '#111827',
@@ -463,7 +477,7 @@ function CashierInterface() {
                     fontSize: '18px',
                     fontWeight: 'bold',
                     color: '#10b981',
-                    marginBottom: '20px',
+                    marginBottom: '15px',
                     padding: '10px',
                     background: '#374151',
                     borderRadius: '6px'
@@ -473,13 +487,14 @@ function CashierInterface() {
                   <span>{currentOrder.totalAmount?.toLocaleString('vi-VN')}đ</span>
                 </div>
 
-                <div style={{ marginBottom: '20px' }}>
+                {/* CHỌN HÌNH THỨC THANH TOÁN */}
+                <div style={{ marginBottom: '15px' }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#d1d5db' }}>
                     Hình thức thanh toán:
                   </label>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button
-                      onClick={() => setPaymentMethod('CASH')}
+                      onClick={() => { setPaymentMethod('CASH'); setQrData(null); }}
                       style={{
                         flex: 1,
                         padding: '10px',
@@ -494,7 +509,10 @@ function CashierInterface() {
                       💵 Tiền mặt
                     </button>
                     <button
-                      onClick={() => setPaymentMethod('TRANSFER')}
+                      onClick={() => { 
+                        setPaymentMethod('TRANSFER'); 
+                        if (!qrData) handleGenerateQR(currentOrder._id); 
+                      }}
                       style={{
                         flex: 1,
                         padding: '10px',
@@ -506,10 +524,35 @@ function CashierInterface() {
                         cursor: 'pointer'
                       }}
                     >
-                      💳 Chuyển khoản (CK)
+                      💳 Chuyển khoản (QR)
                     </button>
                   </div>
                 </div>
+
+                {/* KHU VỰC HIỂN THỊ MÃ QR NẾU CHỌN CHUYỂN KHOẢN */}
+                {paymentMethod === 'TRANSFER' && (
+                  <div style={{ textAlign: 'center', background: '#111827', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
+                    {loadingQr ? (
+                      <p style={{ color: '#9ca3af', margin: '10px 0' }}>⏳ Đang tạo mã VietQR...</p>
+                    ) : qrData ? (
+                      <div>
+                        <div style={{ background: '#fff', display: 'inline-block', padding: '8px', borderRadius: '6px' }}>
+                          <img src={qrData.qrImageUrl} alt="VietQR" style={{ width: '180px', height: '180px', display: 'block' }} />
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#93c5fd', marginTop: '8px' }}>
+                          Nội dung CK: <strong style={{ color: '#ef4444' }}>{qrData.memo}</strong>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleGenerateQR(currentOrder._id)}
+                        style={{ padding: '8px 15px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                      >
+                        Tạo mã QR lại
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <button
                   onClick={handleConfirmPayment}
@@ -526,7 +569,7 @@ function CashierInterface() {
                     cursor: submitting ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  {submitting ? '⏳ Đang lưu...' : '✅ XÁC NHẬN THANH TOÁN'}
+                  {submitting ? '⏳ Đang xử lý...' : '✅ XÁC NHẬN HOÀN TẤT THANH TOÁN'}
                 </button>
               </div>
             )}
