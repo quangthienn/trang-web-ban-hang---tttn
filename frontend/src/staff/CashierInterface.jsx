@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 
 function CashierInterface() {
-  const [activeTab, setActiveTab] = useState('TABLES'); // 'TABLES' (Sơ đồ bàn) hoặc 'BOOKINGS' (Danh sách đặt bàn)
+  const [activeTab, setActiveTab] = useState('TABLES'); // 'TABLES' hoặc 'BOOKINGS'
   
   // State Sơ đồ bàn & Thanh toán
   const [tables, setTables] = useState([]);
@@ -13,6 +13,10 @@ function CashierInterface() {
   const [paymentMethod, setPaymentMethod] = useState('CASH'); // 'CASH' hoặc 'TRANSFER'
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // State Quản lý Menu để gọi thêm món
+  const [menuItems, setMenuItems] = useState([]);
+  const [orderQuantities, setOrderQuantities] = useState({}); // Lưu số lượng tạm khi thu ngân chọn món thêm
 
   // State Quản lý QR Chuyển khoản
   const [qrData, setQrData] = useState(null);
@@ -34,7 +38,20 @@ function CashierInterface() {
     }
   };
 
-  // 2️⃣ Lấy danh sách Đặt bàn từ Backend
+  // 2️⃣ Lấy danh sách Menu từ Backend (để phục vụ việc chọn món thêm)
+  const fetchMenu = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/products`); // Hoặc /api/menu tùy API backend của bạn
+      if (res.ok) {
+        const data = await res.json();
+        setMenuItems(data);
+      }
+    } catch (err) {
+      console.error('❌ Lỗi tải menu:', err);
+    }
+  };
+
+  // 3️⃣ Lấy danh sách Đặt bàn từ Backend
   const fetchBookings = async () => {
     try {
       let res = await fetch(`${API_URL}/api/bookings`);
@@ -52,6 +69,7 @@ function CashierInterface() {
 
   useEffect(() => {
     fetchTables();
+    fetchMenu();
     fetchBookings();
 
     const interval = setInterval(() => {
@@ -62,7 +80,7 @@ function CashierInterface() {
     return () => clearInterval(interval);
   }, []);
 
-  // 3️⃣ Khi chọn 1 Bàn để xem thanh toán
+  // 4️⃣ Khi chọn 1 Bàn để xem/thêm món hoặc thanh toán
   const handleSelectTable = async (table) => {
     if (table.status === 'AVAILABLE') return;
 
@@ -71,6 +89,7 @@ function CashierInterface() {
     setCurrentOrder(null);
     setQrData(null);
     setPaymentMethod('CASH');
+    setOrderQuantities({});
 
     try {
       const res = await fetch(`${API_URL}/api/orders`);
@@ -91,7 +110,67 @@ function CashierInterface() {
     }
   };
 
-  // 4️⃣ Gọi API tạo mã VietQR khi chọn hình thức Chuyển khoản
+  // Thay đổi số lượng của món khi thu ngân chọn gọi thêm
+  const handleQuantityChange = (productId, delta) => {
+    setOrderQuantities((prev) => {
+      const current = prev[productId] || 0;
+      const updated = current + delta;
+      if (updated <= 0) {
+        const copy = { ...prev };
+        delete copy[productId];
+        return copy;
+      }
+      return { ...prev, [productId]: updated };
+    });
+  };
+
+  // 5️⃣ Gửi món thêm xuống bếp / cập nhật order vào Backend
+  const handleAddItemsToOrder = async () => {
+    if (!currentOrder) return;
+
+    // Chuyển đổi state orderQuantities thành mảng các món được chọn
+    const itemsToAdd = Object.keys(orderQuantities).map((productId) => {
+      const product = menuItems.find((p) => (p._id || p.id) === productId);
+      return {
+        productId: productId,
+        name: product ? product.name : 'Món ăn',
+        price: product ? product.price : 0,
+        quantity: orderQuantities[productId]
+      };
+    });
+
+    if (itemsToAdd.length === 0) {
+      alert('⚠️ Vui lòng chọn ít nhất một món để thêm!');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Gọi API thêm món (Thường là POST hoặc PUT tới /api/orders/:id/items hoặc /api/orders/add-items)
+      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: itemsToAdd })
+      });
+
+      if (res.ok) {
+        const updatedOrderData = await res.json();
+        alert('✅ Đã thêm món thành công và gửi thông báo xuống bếp!');
+        setCurrentOrder(updatedOrderData.order || updatedOrderData);
+        setOrderQuantities({}); // Reset lại bộ chọn món
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        alert(`❌ Lỗi thêm món: ${errData.message || 'Không thể cập nhật hóa đơn!'}`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('❌ Lỗi kết nối khi gửi món xuống bếp!');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 6️⃣ Gọi API tạo mã VietQR khi chọn hình thức Chuyển khoản
   const handleGenerateQR = async (orderId) => {
     setLoadingQr(true);
     try {
@@ -113,7 +192,7 @@ function CashierInterface() {
     }
   };
 
-  // 5️⃣ Xử lý Xác nhận Thanh toán hóa đơn
+  // 7️⃣ Xử lý Xác nhận Thanh toán hóa đơn
   const handleConfirmPayment = async () => {
     if (!currentOrder) return;
 
@@ -144,7 +223,7 @@ function CashierInterface() {
     }
   };
 
-  // 6️⃣ Xử lý Cập nhật Trạng thái Đặt bàn
+  // 8️⃣ Xử lý Cập nhật Trạng thái Đặt bàn
   const handleUpdateBookingStatus = async (bookingId, newStatus) => {
     try {
       let res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
@@ -174,7 +253,6 @@ function CashierInterface() {
     }
   };
 
-  // Hàm tính toán trạng thái thời gian đặt bàn để cảnh báo thu ngân
   const getBookingAlert = (item) => {
     if (item.status === 'CANCELLED' || item.status === 'COMPLETED') return null;
 
@@ -188,14 +266,11 @@ function CashierInterface() {
     if (!bookingDateObj || isNaN(bookingDateObj.getTime())) return null;
 
     const now = new Date();
-    const diffMins = Math.floor((bookingDateObj - now) / 60000); // Số phút từ hiện tại đến giờ hẹn
+    const diffMins = Math.floor((bookingDateObj - now) / 60000);
 
-    // Quá giờ hẹn mà chưa xử lý / khách chưa tới
     if (diffMins < 0 && diffMins >= -60) {
       return { type: 'OVERDUE', text: `🔴 Đã đến giờ hẹn (${Math.abs(diffMins)} phút trước)!` };
-    }
-    // Sắp tới giờ hẹn trong vòng 30 phút nữa
-    else if (diffMins >= 0 && diffMins <= 30) {
+    } else if (diffMins >= 0 && diffMins <= 30) {
       return { type: 'SOON', text: `⚡ Sắp tới giờ (${diffMins === 0 ? 'Ngay bây giờ' : `trong ${diffMins} phút nữa`})` };
     }
 
@@ -236,7 +311,7 @@ function CashierInterface() {
         <div>
           <h2 style={{ color: '#fbbf24', margin: 0 }}>💵 MÀN HÌNH QUẢN LÝ THU NGÂN</h2>
           <p style={{ color: '#9ca3af', fontSize: '14px', margin: '5px 0 0 0' }}>
-            Quản lý sơ đồ bàn, thanh toán hóa đơn và danh sách khách hàng đặt trước.
+            Quản lý sơ đồ bàn, gọi thêm món, thanh toán hóa đơn và đơn đặt bàn.
           </p>
         </div>
 
@@ -293,11 +368,11 @@ function CashierInterface() {
 
       <hr style={{ borderColor: '#374151', margin: '20px 0' }} />
 
-      {/* ==================== TAB 1: SƠ ĐỒ BÀN & THANH TOÁN ==================== */}
+      {/* ==================== TAB 1: SƠ ĐỒ BÀN ==================== */}
       {activeTab === 'TABLES' && (
         <div>
           <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-            Bấm vào bàn màu <strong>ĐỎ (có khách)</strong> để xem và xác nhận thanh toán hóa đơn.
+            Bấm vào bàn màu <strong>ĐỎ (có khách)</strong> để xem hóa đơn, gọi thêm món hoặc thanh toán.
           </p>
 
           <div
@@ -321,8 +396,7 @@ function CashierInterface() {
                     textAlign: 'center',
                     cursor: isOccupied ? 'pointer' : 'default',
                     boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                    border: selectedTable?._id === table._id ? '3px solid #fbbf24' : 'none',
-                    transition: 'transform 0.1s'
+                    border: selectedTable?._id === table._id ? '3px solid #fbbf24' : 'none'
                   }}
                 >
                   <div style={{ fontSize: '20px', fontWeight: 'bold' }}>{table.name}</div>
@@ -336,7 +410,7 @@ function CashierInterface() {
         </div>
       )}
 
-      {/* ==================== TAB 2: DANH SÁCH ĐẶT BÀN ==================== */}
+      {/* ==================== TAB 2: ĐẶT BÀN ==================== */}
       {activeTab === 'BOOKINGS' && (
         <div>
           <h3 style={{ color: '#fbbf24', marginTop: 0 }}>📋 Danh sách khách hàng đặt bàn trước</h3>
@@ -365,9 +439,7 @@ function CashierInterface() {
                         <td style={{ padding: '12px', fontWeight: 'bold' }}>
                           {item.customerName || item.fullName || 'Khách chưa để lại tên'}
                         </td>
-                        <td style={{ padding: '12px', color: '#60a5fa' }}>
-                          {item.phone || 'Chưa có SĐT'}
-                        </td>
+                        <td style={{ padding: '12px', color: '#60a5fa' }}>{item.phone || 'Chưa có SĐT'}</td>
                         <td style={{ padding: '12px' }}>
                           {renderDateTime(item)}
                           {alertInfo && (
@@ -420,7 +492,7 @@ function CashierInterface() {
         </div>
       )}
 
-      {/* ==================== POPUP HÓA ĐƠN THANH TOÁN ==================== */}
+      {/* ==================== POPUP QUẢN LÝ BÀN & THANH TOÁN (KÈM GỌI THÊM MÓN) ==================== */}
       {selectedTable && (
         <div
           style={{
@@ -429,7 +501,7 @@ function CashierInterface() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: 'rgba(0,0,0,0.8)',
+            background: 'rgba(0,0,0,0.85)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -439,7 +511,8 @@ function CashierInterface() {
           <div
             style={{
               background: '#1f2937',
-              width: '450px',
+              width: '850px',
+              maxWidth: '95vw',
               maxHeight: '90vh',
               overflowY: 'auto',
               borderRadius: '12px',
@@ -457,156 +530,154 @@ function CashierInterface() {
                 background: 'transparent',
                 border: 'none',
                 color: '#9ca3af',
-                fontSize: '20px',
+                fontSize: '22px',
                 cursor: 'pointer'
               }}
             >
               ✕
             </button>
 
-            <h3 style={{ margin: 0, color: '#fbbf24', textAlign: 'center' }}>
-              🧾 HÓA ĐƠN - {selectedTable.name}
+            <h3 style={{ margin: '0 0 15px 0', color: '#fbbf24', textAlign: 'center' }}>
+              🧾 CHI TIẾT BÀN & HÓA ĐƠN - {selectedTable.name}
             </h3>
 
             {loadingOrder ? (
-              <p style={{ textAlign: 'center', margin: '30px 0' }}>⏳ Đang tải hóa đơn...</p>
+              <p style={{ textAlign: 'center', margin: '30px 0' }}>⏳ Đang tải thông tin hóa đơn...</p>
             ) : !currentOrder ? (
               <p style={{ textAlign: 'center', color: '#ef4444', margin: '30px 0' }}>
                 Bàn này chưa có món hoặc đã thanh toán xong!
               </p>
             ) : (
-              <div>
-                <div
-                  style={{
-                    maxHeight: '180px',
-                    overflowY: 'auto',
-                    margin: '15px 0',
-                    background: '#111827',
-                    padding: '10px',
-                    borderRadius: '8px'
-                  }}
-                >
-                  <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid #374151', color: '#9ca3af' }}>
-                        <th style={{ textAlign: 'left', paddingBottom: '8px' }}>Món</th>
-                        <th style={{ textAlign: 'center', paddingBottom: '8px' }}>SL</th>
-                        <th style={{ textAlign: 'right', paddingBottom: '8px' }}>Thành tiền</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentOrder.items?.map((item, idx) => (
-                        <tr key={idx} style={{ borderBottom: '1px solid #1f2937' }}>
-                          <td style={{ padding: '8px 0' }}>{item.name}</td>
-                          <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                          <td style={{ textAlign: 'right' }}>
-                            {(item.price * item.quantity).toLocaleString('vi-VN')}đ
-                          </td>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                {/* CỘT TRÁI: HÓA ĐƠN HIỆN TẠI & THANH TOÁN */}
+                <div>
+                  <h4 style={{ color: '#38bdf8', marginTop: 0 }}>📋 Các món đã gọi:</h4>
+                  <div style={{ maxHeight: '150px', overflowY: 'auto', background: '#111827', padding: '10px', borderRadius: '8px', marginBottom: '10px' }}>
+                    <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #374151', color: '#9ca3af' }}>
+                          <th style={{ textAlign: 'left', paddingBottom: '5px' }}>Món</th>
+                          <th style={{ textAlign: 'center', paddingBottom: '5px' }}>SL</th>
+                          <th style={{ textAlign: 'right', paddingBottom: '5px' }}>Thành tiền</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: '18px',
-                    fontWeight: 'bold',
-                    color: '#10b981',
-                    marginBottom: '15px',
-                    padding: '10px',
-                    background: '#374151',
-                    borderRadius: '6px'
-                  }}
-                >
-                  <span>TỔNG CỘNG:</span>
-                  <span>{currentOrder.totalAmount?.toLocaleString('vi-VN')}đ</span>
-                </div>
-
-                <div style={{ marginBottom: '15px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#d1d5db' }}>
-                    Hình thức thanh toán:
-                  </label>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button
-                      onClick={() => { setPaymentMethod('CASH'); setQrData(null); }}
-                      style={{
-                        flex: 1,
-                        padding: '10px',
-                        borderRadius: '6px',
-                        border: paymentMethod === 'CASH' ? '2px solid #10b981' : '1px solid #374151',
-                        background: paymentMethod === 'CASH' ? '#065f46' : '#374151',
-                        color: '#fff',
-                        fontWeight: 'bold',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      💵 Tiền mặt
-                    </button>
-                    <button
-                      onClick={() => { 
-                        setPaymentMethod('TRANSFER'); 
-                        if (!qrData) handleGenerateQR(currentOrder._id); 
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '10px',
-                        borderRadius: '6px',
-                        border: paymentMethod === 'TRANSFER' ? '2px solid #3b82f6' : '1px solid #374151',
-                        background: paymentMethod === 'TRANSFER' ? '#1e40af' : '#374151',
-                        color: '#fff',
-                        fontWeight: 'bold',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      💳 Chuyển khoản (QR)
-                    </button>
+                      </thead>
+                      <tbody>
+                        {currentOrder.items?.map((item, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #1f2937' }}>
+                            <td style={{ padding: '6px 0' }}>{item.name}</td>
+                            <td style={{ textAlign: 'center' }}>{item.quantity}</td>
+                            <td style={{ textAlign: 'right' }}>{(item.price * item.quantity).toLocaleString('vi-VN')}đ</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', marginBottom: '12px', padding: '8px', background: '#374151', borderRadius: '6px' }}>
+                    <span>TỔNG CỘNG:</span>
+                    <span>{currentOrder.totalAmount?.toLocaleString('vi-VN')}đ</span>
+                  </div>
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#d1d5db' }}>Hình thức thanh toán:</label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => { setPaymentMethod('CASH'); setQrData(null); }}
+                        style={{ flex: 1, padding: '8px', borderRadius: '6px', border: paymentMethod === 'CASH' ? '2px solid #10b981' : '1px solid #374151', background: paymentMethod === 'CASH' ? '#065f46' : '#374151', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+                      >
+                        💵 Tiền mặt
+                      </button>
+                      <button
+                        onClick={() => { setPaymentMethod('TRANSFER'); if (!qrData) handleGenerateQR(currentOrder._id); }}
+                        style={{ flex: 1, padding: '8px', borderRadius: '6px', border: paymentMethod === 'TRANSFER' ? '2px solid #3b82f6' : '1px solid #374151', background: paymentMethod === 'TRANSFER' ? '#1e40af' : '#374151', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
+                      >
+                        💳 Chuyển khoản
+                      </button>
+                    </div>
+                  </div>
+
+                  {paymentMethod === 'TRANSFER' && (
+                    <div style={{ textAlign: 'center', background: '#111827', padding: '10px', borderRadius: '8px', marginBottom: '12px' }}>
+                      {loadingQr ? (
+                        <p style={{ color: '#9ca3af', margin: '5px 0', fontSize: '12px' }}>⏳ Đang tạo mã VietQR...</p>
+                      ) : qrData ? (
+                        <div>
+                          <div style={{ background: '#fff', display: 'inline-block', padding: '6px', borderRadius: '6px' }}>
+                            <img src={qrData.qrImageUrl} alt="VietQR" style={{ width: '140px', height: '140px', display: 'block' }} />
+                          </div>
+                          <div style={{ fontSize: '12px', color: '#93c5fd', marginTop: '5px' }}>
+                            Nội dung: <strong style={{ color: '#ef4444' }}>{qrData.memo}</strong>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleConfirmPayment}
+                    disabled={submitting}
+                    style={{ width: '100%', padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    {submitting ? '⏳ Đang xử lý...' : '✅ XÁC NHẬN THANH TOÁN & GIẢI PHÓNG BÀN'}
+                  </button>
                 </div>
 
-                {paymentMethod === 'TRANSFER' && (
-                  <div style={{ textAlign: 'center', background: '#111827', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
-                    {loadingQr ? (
-                      <p style={{ color: '#9ca3af', margin: '10px 0' }}>⏳ Đang tạo mã VietQR...</p>
-                    ) : qrData ? (
-                      <div>
-                        <div style={{ background: '#fff', display: 'inline-block', padding: '8px', borderRadius: '6px' }}>
-                          <img src={qrData.qrImageUrl} alt="VietQR" style={{ width: '180px', height: '180px', display: 'block' }} />
-                        </div>
-                        <div style={{ fontSize: '13px', color: '#93c5fd', marginTop: '8px' }}>
-                          Nội dung CK: <strong style={{ color: '#ef4444' }}>{qrData.memo}</strong>
-                        </div>
-                      </div>
+                {/* CỘT PHẢI: GỌI THÊM MÓN GỬI BẾP */}
+                <div style={{ background: '#111827', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
+                  <h4 style={{ color: '#fbbf24', marginTop: 0, marginBottom: '10px' }}>➕ Order Thêm Món (Gửi Bếp)</h4>
+                  
+                  <div style={{ flex: 1, maxHeight: '200px', overflowY: 'auto', marginBottom: '10px', paddingRight: '5px' }}>
+                    {menuItems.length === 0 ? (
+                      <p style={{ color: '#9ca3af', fontSize: '13px', textAlign: 'center' }}>Đang tải thực đơn...</p>
                     ) : (
-                      <button
-                        onClick={() => handleGenerateQR(currentOrder._id)}
-                        style={{ padding: '8px 15px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                      >
-                        Tạo mã QR lại
-                      </button>
+                      menuItems.map((prod) => {
+                        const prodId = prod._id || prod.id;
+                        const qty = orderQuantities[prodId] || 0;
+                        return (
+                          <div key={prodId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid #1f2937' }}>
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: 'bold' }}>{prod.name}</div>
+                              <div style={{ fontSize: '12px', color: '#10b981' }}>{prod.price?.toLocaleString('vi-VN')}đ</div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <button
+                                onClick={() => handleQuantityChange(prodId, -1)}
+                                style={{ width: '24px', height: '24px', background: '#374151', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                              >
+                                -
+                              </button>
+                              <span style={{ fontSize: '13px', width: '20px', textAlign: 'center' }}>{qty}</span>
+                              <button
+                                onClick={() => handleQuantityChange(prodId, 1)}
+                                style={{ width: '24px', height: '24px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
-                )}
 
-                <button
-                  onClick={handleConfirmPayment}
-                  disabled={submitting}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    background: '#10b981',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontSize: '16px',
-                    fontWeight: 'bold',
-                    cursor: submitting ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {submitting ? '⏳ Đang xử lý...' : '✅ XÁC NHẬN HOÀN TẤT THANH TOÁN'}
-                </button>
+                  <button
+                    onClick={handleAddItemsToOrder}
+                    disabled={submitting || Object.keys(orderQuantities).length === 0}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      background: Object.keys(orderQuantities).length > 0 ? '#f59e0b' : '#374151',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      cursor: Object.keys(orderQuantities).length > 0 ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    🚀 Gửi Món Thêm Xuống Bếp
+                  </button>
+                </div>
               </div>
             )}
           </div>
