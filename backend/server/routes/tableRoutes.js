@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Table = require('../models/Table');
 
 // 1. Lấy tất cả danh sách bàn
@@ -28,8 +29,46 @@ router.post('/', async (req, res) => {
   }
 });
 
+// =========================================================================
+// 3. CẬP NHẬT TRẠNG THÁI BÀN (BỔ SUNG CHO REACT GỌI PATCH /api/tables/:id)
+// =========================================================================
+router.patch('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, reservationDetails } = req.body;
+
+    // Kiểm tra xem ID truyền lên là ObjectId hay là Tên/Mã bàn
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const query = isObjectId 
+      ? { _id: id } 
+      : { $or: [{ code: id }, { name: id }] };
+
+    const updateData = {};
+    if (status) {
+      updateData.status = String(status).toUpperCase(); // Chuyển 'reserved' -> 'RESERVED'
+    }
+    if (reservationDetails) {
+      updateData.reservationDetails = reservationDetails;
+    }
+
+    const updatedTable = await Table.findOneAndUpdate(
+      query,
+      { $set: updateData },
+      { new: true }
+    );
+
+    if (!updatedTable) {
+      return res.status(404).json({ message: 'Không tìm thấy bàn' });
+    }
+
+    res.json(updatedTable);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi cập nhật bàn', error: error.message });
+  }
+});
+
 // ==========================================
-// 3. ĐẶT BÀN TRƯỚC (GIỮ BÀN - TRẠNG THÁI RESERVED)
+// 4. ĐẶT BÀN TRƯỚC (GIỮ BÀN - TRẠNG THÁI RESERVED)
 // ==========================================
 router.post('/:id/reserve', async (req, res) => {
   try {
@@ -42,7 +81,7 @@ router.post('/:id/reserve', async (req, res) => {
         reservationDetails: {
           customerName,
           customerPhone,
-          reservationTime: new Date(reservationTime)
+          reservationTime: reservationTime ? new Date(reservationTime) : null
         }
       },
       { new: true }
@@ -63,7 +102,7 @@ router.post('/:id/reserve', async (req, res) => {
 });
 
 // ==========================================
-// 4. HỦY GIỮ BÀN HOẶC TRẢ BÀN VỀ TRỐNG (AVAILABLE)
+// 5. HỦY GIỮ BÀN HOẶC TRẢ BÀN VỀ TRỐNG (AVAILABLE)
 // ==========================================
 router.patch('/:id/release', async (req, res) => {
   try {
@@ -94,7 +133,7 @@ router.patch('/:id/release', async (req, res) => {
   }
 });
 
-// 5. Cập nhật thông tin bàn chung
+// 6. Cập nhật thông tin bàn chung
 router.put('/:id', async (req, res) => {
   try {
     const updatedTable = await Table.findByIdAndUpdate(req.params.id, req.body, { new: true });
@@ -104,7 +143,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// 6. Xóa bàn
+// 7. Xóa bàn
 router.delete('/:id', async (req, res) => {
   try {
     await Table.findByIdAndDelete(req.params.id);
