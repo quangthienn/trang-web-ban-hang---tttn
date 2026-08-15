@@ -4,8 +4,16 @@ import React, { useState } from 'react';
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 
 function BookingSection({ onBookTable }) {
-  // Lấy ngày hôm nay làm mặc định (YYYY-MM-DD)
-  const today = new Date().toISOString().split('T')[0];
+  // 🛠️ Lấy ngày hôm nay theo múi giờ địa phương (YYYY-MM-DD)
+  const getTodayString = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const today = getTodayString();
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -46,18 +54,27 @@ function BookingSection({ onBookTable }) {
       return;
     }
 
+    // 🔴 RÀNG BUỘC THỜI GIAN: Kiểm tra ngày + giờ chọn có ở quá khứ không
+    const selectedDateTime = new Date(`${formData.date}T${formData.time}:00`);
+    const now = new Date();
+
+    if (selectedDateTime <= now) {
+      alert('❌ Thời gian đặt bàn phải ở trong TƯƠNG LAI! Vui lòng chọn lại ngày hoặc khung giờ khác.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const numAdults = Number(formData.adults);
       const numChildren = Number(formData.children);
 
-      // 🚀 Payload gửi lên Backend (Không cần truyền tableCode)
+      // 🚀 Payload gửi lên Backend
       const payload = {
         customerName: formData.fullName,
         phone: formData.phone,
         email: formData.email,
-        bookingTime: new Date(`${formData.date}T${formData.time}:00`),
+        bookingTime: selectedDateTime,
         adults: numAdults,
         children: numChildren,
         guestCount: numAdults + numChildren,
@@ -364,7 +381,7 @@ const styles = {
     borderRadius: '8px',
     border: '1px solid #4b5563',
     alignItems: 'center',
-    justify: 'space-around'
+    justifyContent: 'space-around'
   },
   stepperBox: {
     display: 'flex',
