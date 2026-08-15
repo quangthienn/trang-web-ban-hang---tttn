@@ -148,10 +148,9 @@ function CashierInterface() {
         const updatedOrderData = await res.json();
         alert('✅ Đã thêm món thành công và gửi thông báo xuống bếp!');
         
-        // Lấy dữ liệu order mới nhất trả về từ server gán thẳng vào state
         const freshOrder = updatedOrderData.order || updatedOrderData;
         setCurrentOrder(freshOrder);
-        setOrderQuantities({}); // Reset lại bộ chọn món thêm
+        setOrderQuantities({});
       } else {
         const errData = await res.json().catch(() => ({}));
         alert(`❌ Lỗi thêm món: ${errData.message || 'Không thể cập nhật hóa đơn!'}`);
