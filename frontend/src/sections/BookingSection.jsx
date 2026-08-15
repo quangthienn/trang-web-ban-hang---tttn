@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 // 🌐 Khai báo link Backend Render Online tại đây:
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
@@ -7,7 +7,6 @@ function BookingSection({ onBookTable }) {
   // Lấy ngày hôm nay làm mặc định (YYYY-MM-DD)
   const today = new Date().toISOString().split('T')[0];
 
-  const [tables, setTables] = useState([]); // Danh sách bàn từ DB
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
@@ -16,7 +15,6 @@ function BookingSection({ onBookTable }) {
     time: '19:00',
     adults: 2,
     children: 0,
-    tableCode: '', // Mã bàn chọn (VD: B01)
     note: ''
   });
 
@@ -27,26 +25,6 @@ function BookingSection({ onBookTable }) {
     '10:30', '11:00', '11:30', '12:00', '12:30', '13:00',
     '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'
   ];
-
-  // 🔄 Tải danh sách bàn trống từ Backend khi load trang
-  useEffect(() => {
-    const fetchTables = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/tables`);
-        if (res.ok) {
-          const data = await res.json();
-          setTables(data);
-          // Tự động chọn bàn đầu tiên nếu có
-          if (data && data.length > 0) {
-            setFormData((prev) => ({ ...prev, tableCode: data[0].code || data[0].name }));
-          }
-        }
-      } catch (err) {
-        console.error('Lỗi lấy danh sách bàn:', err);
-      }
-    };
-    fetchTables();
-  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -68,18 +46,13 @@ function BookingSection({ onBookTable }) {
       return;
     }
 
-    if (!formData.tableCode) {
-      alert('⚠️ Vui lòng chọn bàn đặt!');
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
       const numAdults = Number(formData.adults);
       const numChildren = Number(formData.children);
 
-      // 🚀 Payload chuẩn gửi lên Backend
+      // 🚀 Payload gửi lên Backend (Không cần truyền tableCode)
       const payload = {
         customerName: formData.fullName,
         phone: formData.phone,
@@ -87,8 +60,7 @@ function BookingSection({ onBookTable }) {
         bookingTime: new Date(`${formData.date}T${formData.time}:00`),
         adults: numAdults,
         children: numChildren,
-        guestCount: numAdults + numChildren, // Gửi cả tổng số khách
-        tableCode: formData.tableCode,        // Mã bàn thực tế (VD: B01, B02)
+        guestCount: numAdults + numChildren,
         note: formData.note
       };
 
@@ -108,9 +80,9 @@ function BookingSection({ onBookTable }) {
         }
 
         alert(
-          `🎉 Đặt bàn thành công!\n\n• Bàn: ${formData.tableCode}\n• Khách hàng: ${formData.fullName}\n• Thời gian: ${formData.time} - Ngày ${formData.date}\n• Số khách: ${numAdults} người lớn${
+          `🎉 Đặt bàn thành công!\n\n• Khách hàng: ${formData.fullName}\n• Thời gian: ${formData.time} - Ngày ${formData.date}\n• Số khách: ${numAdults} người lớn${
             numChildren > 0 ? `, ${numChildren} trẻ em` : ''
-          }`
+          }\n\nNhà hàng sẽ liên hệ xác nhận và xếp bàn cho bạn sớm nhất!`
         );
 
         // Reset form
@@ -122,7 +94,6 @@ function BookingSection({ onBookTable }) {
           time: '19:00',
           adults: 2,
           children: 0,
-          tableCode: tables.length > 0 ? (tables[0].code || tables[0].name) : '',
           note: ''
         });
       } else {
@@ -131,7 +102,7 @@ function BookingSection({ onBookTable }) {
       }
     } catch (error) {
       console.error('Lỗi khi đặt bàn:', error);
-      alert('❌ Lỗi kết nối đến máy chủ! Vui lòng kiểm tra lại đường truyền hoặc máy chủ Render.');
+      alert('❌ Lỗi kết nối đến máy chủ! Vui lòng kiểm tra lại đường truyền.');
     } finally {
       setIsSubmitting(false);
     }
@@ -179,29 +150,8 @@ function BookingSection({ onBookTable }) {
               </div>
             </div>
 
-            {/* HÀNG 2: CHỌN BÀN & NGÀY ĐẶT */}
+            {/* HÀNG 2: NGÀY & GIỜ ĐẶT BÀN */}
             <div style={styles.grid2}>
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Chọn Bàn Đặt *</label>
-                <select
-                  name="tableCode"
-                  value={formData.tableCode}
-                  onChange={handleChange}
-                  style={styles.select}
-                  required
-                >
-                  {tables.length > 0 ? (
-                    tables.map((tbl) => (
-                      <option key={tbl._id || tbl.code} value={tbl.code || tbl.name}>
-                        Bàn {tbl.code || tbl.name} ({tbl.capacity || 4} chỗ)
-                      </option>
-                    ))
-                  ) : (
-                    <option value="B01">Bàn B01</option>
-                  )}
-                </select>
-              </div>
-
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Ngày đặt bàn *</label>
                 <input
@@ -214,10 +164,7 @@ function BookingSection({ onBookTable }) {
                   required
                 />
               </div>
-            </div>
 
-            {/* HÀNG 3: GIỜ ĐẶT & SỐ LƯỢNG KHÁCH */}
-            <div style={styles.grid2}>
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Khung giờ *</label>
                 <select
@@ -233,52 +180,53 @@ function BookingSection({ onBookTable }) {
                   ))}
                 </select>
               </div>
+            </div>
 
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Số lượng khách *</label>
-                <div style={styles.stepperContainer}>
-                  {/* Người lớn */}
-                  <div style={styles.stepperBox}>
-                    <span style={styles.stepperLabel}>Người lớn:</span>
-                    <div style={styles.stepperControl}>
-                      <button
-                        type="button"
-                        onClick={() => handleGuestChange('adults', -1)}
-                        style={styles.stepBtn}
-                      >
-                        -
-                      </button>
-                      <span style={styles.stepVal}>{formData.adults}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleGuestChange('adults', 1)}
-                        style={styles.stepBtn}
-                      >
-                        +
-                      </button>
-                    </div>
+            {/* HÀNG 3: SỐ LƯỢNG KHÁCH */}
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Số lượng khách *</label>
+              <div style={styles.stepperContainer}>
+                {/* Người lớn */}
+                <div style={styles.stepperBox}>
+                  <span style={styles.stepperLabel}>Người lớn:</span>
+                  <div style={styles.stepperControl}>
+                    <button
+                      type="button"
+                      onClick={() => handleGuestChange('adults', -1)}
+                      style={styles.stepBtn}
+                    >
+                      -
+                    </button>
+                    <span style={styles.stepVal}>{formData.adults}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleGuestChange('adults', 1)}
+                      style={styles.stepBtn}
+                    >
+                      +
+                    </button>
                   </div>
+                </div>
 
-                  {/* Trẻ em */}
-                  <div style={styles.stepperBox}>
-                    <span style={styles.stepperLabel}>Trẻ em:</span>
-                    <div style={styles.stepperControl}>
-                      <button
-                        type="button"
-                        onClick={() => handleGuestChange('children', -1)}
-                        style={styles.stepBtn}
-                      >
-                        -
-                      </button>
-                      <span style={styles.stepVal}>{formData.children}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleGuestChange('children', 1)}
-                        style={styles.stepBtn}
-                      >
-                        +
-                      </button>
-                    </div>
+                {/* Trẻ em */}
+                <div style={styles.stepperBox}>
+                  <span style={styles.stepperLabel}>Trẻ em:</span>
+                  <div style={styles.stepperControl}>
+                    <button
+                      type="button"
+                      onClick={() => handleGuestChange('children', -1)}
+                      style={styles.stepBtn}
+                    >
+                      -
+                    </button>
+                    <span style={styles.stepVal}>{formData.children}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleGuestChange('children', 1)}
+                      style={styles.stepBtn}
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
               </div>
@@ -318,7 +266,7 @@ function BookingSection({ onBookTable }) {
   );
 }
 
-// 🎨 Styles Tối Ưu Tông Màu Nhà Hàng Sang Trọng
+// 🎨 Styles
 const styles = {
   section: {
     padding: '80px 20px',
@@ -416,7 +364,7 @@ const styles = {
     borderRadius: '8px',
     border: '1px solid #4b5563',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justify: 'space-around'
   },
   stepperBox: {
     display: 'flex',
@@ -443,7 +391,7 @@ const styles = {
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center'
+    justify: 'center'
   },
   stepVal: {
     fontWeight: 'bold',
