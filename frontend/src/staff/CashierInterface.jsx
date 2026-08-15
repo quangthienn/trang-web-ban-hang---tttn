@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 
-// 🏦 CẤU HÌNH TÀI KHOẢN NGÂN HÀNG VIETQR (Bạn có thể đổi sang TK ngân hàng của quán)
+// 🏦 CẤU HÌNH TÀI KHOẢN NGÂN HÀNG VIETQR
 const BANK_CONFIG = {
-  bankId: 'MB',          // Mã ngân hàng (VD: MB, VCB, ICB, ACB, VPB, TCB, STB...)
-  accountNo: '0388888888', // Số tài khoản ngân hàng
-  accountName: 'NHA HANG PHUC VU' // Tên chủ tài khoản (Viết hoa không dấu)
+  bankId: 'MB',          // Mã ngân hàng (VD: MB, VCB, ICB, ACB, VPB, TCB...)
+  accountNo: '0388888888', 
+  accountName: 'NHA HANG PHUC VU'
 };
 
 function CashierInterface() {
@@ -16,6 +16,7 @@ function CashierInterface() {
   const [tables, setTables] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [urgentCount, setUrgentCount] = useState(0);
 
   // State Thao tác Bàn & Hóa đơn
   const [selectedTable, setSelectedTable] = useState(null);
@@ -27,9 +28,64 @@ function CashierInterface() {
   const [orderQuantities, setOrderQuantities] = useState({});
 
   // State Thanh toán ('CASH' | 'VIETQR')
-  const [paymentMethod, setPaymentMethod] = useState('CASH'); 
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
+  // 🛠️ HÀM SO SÁNH & LẤY THÔNG TIN BÀN CHUẨN XÁC (KHẮC PHỤC LỖI KHÔNG KHỚP ID / OBJECT)
+  const isTableMatching = (table, entity) => {
+    if (!table || !entity) return false;
+
+    const tId = String(table._id || table.id || '');
+    const tCode = String(table.code || '').toLowerCase();
+    const tName = String(table.name || '').toLowerCase();
+
+    // Lấy ID/Tên từ entity (Order hoặc Booking - hỗ trợ cả dạng object lẫn string)
+    let eTableId = '';
+    if (typeof entity.table === 'object' && entity.table !== null) {
+      eTableId = String(entity.table._id || entity.table.id || '');
+    } else {
+      eTableId = String(entity.tableId || entity.table || '');
+    }
+
+    const eTableCode = String(entity.tableCode || '').toLowerCase();
+    const eTableName = String(
+      typeof entity.table === 'object' && entity.table !== null
+        ? entity.table.name || entity.table.code || ''
+        : entity.tableName || ''
+    ).toLowerCase();
+
+    return (
+      (tId && eTableId && tId === eTableId) ||
+      (tCode && eTableCode && tCode === eTableCode) ||
+      (tName && eTableName && tName === eTableName) ||
+      (tCode && eTableName && tCode === eTableName)
+    );
+  };
+
+  // 🛠️ HÀM LẤY TÊN BÀN HIỂN THỊ DÀNH CHO BẢNG ĐẶT BÀN
+  const getDisplayTableName = (booking) => {
+    if (!booking) return 'Chưa chọn bàn';
+    if (typeof booking.table === 'object' && booking.table !== null) {
+      return booking.table.name || booking.table.code || 'Bàn không tên';
+    }
+    return booking.tableName || booking.tableCode || booking.tableName || booking.table || 'Chưa gán bàn';
+  };
+
+  // 🛠️ HÀM ĐỊNH DẠNG NGÀY GIỜ CHUẨN
+  const formatBookingTime = (booking) => {
+    const rawTime = booking.bookingTime || booking.date || booking.time;
+    if (!rawTime) return 'Chưa chọn';
+
+    const d = new Date(rawTime);
+    if (isNaN(d.getTime())) {
+      return `${booking.date || ''} ${booking.time || ''}`.trim() || String(rawTime);
+    }
+
+    const timeStr = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `${timeStr} - ${dateStr}`;
+  };
 
   // 1️⃣ Tải dữ liệu từ Backend
   const fetchData = async () => {
@@ -50,15 +106,21 @@ function CashierInterface() {
       const safeBookings = Array.isArray(resBookings) ? resBookings : resBookings.bookings || resBookings.data || [];
       const safeOrders = Array.isArray(resOrders) ? resOrders : resOrders.orders || resOrders.data || [];
 
-      // Cập nhật trạng thái bàn hiển thị chính xác theo order chưa thanh toán
+      // Cập nhật trạng thái bàn hiển thị chính xác theo Order
       const activeOrders = safeOrders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED');
       const updatedTables = safeTables.map((tbl) => {
-        const hasOrder = activeOrders.some(
-          (o) => o.tableCode === tbl.code || o.tableName === tbl.name || o.tableId === tbl._id
-        );
+        const hasOrder = activeOrders.some((o) => isTableMatching(tbl, o));
+
+        let calculatedStatus = tbl.status || 'AVAILABLE';
+        if (hasOrder || tbl.status === 'OCCUPIED') {
+          calculatedStatus = 'OCCUPIED';
+        } else if (tbl.status === 'RESERVED') {
+          calculatedStatus = 'RESERVED';
+        }
+
         return {
           ...tbl,
-          status: hasOrder || tbl.status === 'OCCUPIED' ? 'OCCUPIED' : 'AVAILABLE'
+          status: calculatedStatus
         };
       });
 
@@ -76,7 +138,35 @@ function CashierInterface() {
     return () => clearInterval(interval);
   }, []);
 
-  // 2️⃣ Mở Bàn xem Hóa đơn
+  // 🔔 2️⃣ LẶP 5S/LẦN: KIỂM TRA ĐƠN ĐẶT BÀN TRƯỚC 1 TIẾNG CHƯA DUYỆT
+  useEffect(() => {
+    const checkUrgentBookings = () => {
+      const now = new Date().getTime();
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+
+      const urgentList = bookings.filter((b) => {
+        const status = (b.status || 'PENDING').toUpperCase();
+        if (status === 'CONFIRMED' || status === 'CANCELLED') return false;
+
+        const rawTime = b.bookingTime || b.date || b.time;
+        if (!rawTime) return false;
+
+        const bookingTs = new Date(rawTime).getTime();
+        if (isNaN(bookingTs)) return false;
+
+        const diff = bookingTs - now;
+        return diff <= ONE_HOUR_MS;
+      });
+
+      setUrgentCount(urgentList.length);
+    };
+
+    checkUrgentBookings();
+    const alertInterval = setInterval(checkUrgentBookings, 5000);
+    return () => clearInterval(alertInterval);
+  }, [bookings]);
+
+  // 3️⃣ Mở Bàn xem Hóa đơn
   const handleSelectTable = async (table) => {
     setSelectedTable(table);
     setLoadingOrder(true);
@@ -91,10 +181,7 @@ function CashierInterface() {
         const rawOrders = await res.json();
         const orders = Array.isArray(rawOrders) ? rawOrders : rawOrders.orders || [];
         const activeOrder = orders.find(
-          (o) =>
-            (o.tableCode === table.code || o.tableName === table.name || o.tableId === table._id) &&
-            o.status !== 'PAID' &&
-            o.status !== 'CANCELLED'
+          (o) => isTableMatching(table, o) && o.status !== 'PAID' && o.status !== 'CANCELLED'
         );
         setCurrentOrder(activeOrder || null);
       }
@@ -105,7 +192,7 @@ function CashierInterface() {
     }
   };
 
-  // 3️⃣ Tăng/Giảm số lượng món gọi thêm
+  // 4️⃣ Tăng/Giảm số lượng món gọi thêm
   const handleQuantityChange = (productId, delta) => {
     setOrderQuantities((prev) => {
       const current = prev[productId] || 0;
@@ -119,7 +206,7 @@ function CashierInterface() {
     });
   };
 
-  // 4️⃣ Gửi món gọi thêm xuống bếp
+  // 5️⃣ Gửi món gọi thêm xuống bếp
   const handleAddItemsToOrder = async () => {
     if (!currentOrder) return;
 
@@ -162,7 +249,7 @@ function CashierInterface() {
     }
   };
 
-  // 5️⃣ THANH TOÁN & GIẢI PHÓNG BÀN
+  // 6️⃣ THANH TOÁN & GIẢI PHÓNG BÀN
   const handleCheckout = async () => {
     if (!currentOrder) return;
 
@@ -181,7 +268,6 @@ function CashierInterface() {
 
     setIsProcessingPayment(true);
     try {
-      // Cập nhật Order -> PAID
       let resOrder = await fetch(`${API_URL}/api/orders/${currentOrder._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -196,7 +282,6 @@ function CashierInterface() {
         });
       }
 
-      // Đổi trạng thái Bàn -> AVAILABLE
       const tableId = selectedTable._id || selectedTable.id;
       await fetch(`${API_URL}/api/tables/${tableId}`, {
         method: 'PATCH',
@@ -216,8 +301,9 @@ function CashierInterface() {
     }
   };
 
-  // 6️⃣ Cập nhật Trạng thái Đặt bàn
-  const handleUpdateBookingStatus = async (bookingId, newStatus) => {
+  // 7️⃣ CẬP NHẬT TRẠNG THÁI ĐẶT BÀN & DUYỆT GIỮ BÀN CHÍNH XÁC
+  const handleUpdateBookingStatus = async (booking, newStatus) => {
+    const bookingId = booking._id || booking.id;
     try {
       let res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
         method: 'PATCH',
@@ -225,7 +311,7 @@ function CashierInterface() {
         body: JSON.stringify({ status: newStatus })
       });
 
-      if (res.status === 404) {
+      if (!res.ok) {
         res = await fetch(`${API_URL}/api/reservations/${bookingId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -233,28 +319,74 @@ function CashierInterface() {
         });
       }
 
-      if (res.ok) {
-        alert('✅ Đã cập nhật đơn đặt bàn!');
-        await fetchData();
-      } else {
-        alert('❌ Lỗi cập nhật đơn đặt bàn!');
+      // Xử lý lấy ID Bàn chính xác để giữ bàn trên Sơ đồ
+      if (newStatus === 'CONFIRMED') {
+        let targetTableId = null;
+        if (typeof booking.table === 'object' && booking.table !== null) {
+          targetTableId = booking.table._id || booking.table.id;
+        } else {
+          targetTableId = booking.tableId || booking.table;
+        }
+
+        if (targetTableId) {
+          await fetch(`${API_URL}/api/tables/${targetTableId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'RESERVED' })
+          }).catch(() => null);
+        }
       }
+
+      alert(`✅ Đã ${newStatus === 'CONFIRMED' ? 'duyệt giữ bàn' : 'hủy đơn đặt'} thành công!`);
+      await fetchData();
     } catch (err) {
       alert('❌ Lỗi máy chủ!');
     }
   };
 
-  const pendingCount = bookings.filter((b) => b.status === 'PENDING' || !b.status).length;
+  const pendingCount = bookings.filter((b) => (b.status || 'PENDING').toUpperCase() === 'PENDING').length;
   const totalAmount = currentOrder?.totalAmount || 0;
   const changeAmount = paymentMethod === 'CASH' ? (parseFloat(cashReceived) || 0) - totalAmount : 0;
 
-  // URL Tạo mã VietQR động theo số tiền & tên bàn
+  // URL Tạo mã VietQR
   const qrNote = encodeURIComponent(`Thanh toan ${selectedTable?.name || ''}`);
   const vietQrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.bankId}-${BANK_CONFIG.accountNo}-compact2.png?amount=${totalAmount}&addInfo=${qrNote}&accountName=${encodeURIComponent(BANK_CONFIG.accountName)}`;
 
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', color: '#fff', backgroundColor: '#111827', minHeight: '90vh' }}>
       
+      {/* THÔNG BÁO KHẨN CẤP ĐƠN ĐẶT SẮP ĐẾN GIỜ (NHẮC LẠI NỔI BẬT) */}
+      {urgentCount > 0 && (
+        <div style={{
+          backgroundColor: '#ef4444',
+          color: '#fff',
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          boxShadow: '0 0 12px rgba(239, 68, 68, 0.6)'
+        }}>
+          <span>🚨 CẢNH BẢO: Có {urgentCount} đơn đặt bàn trong vòng 1 tiếng chưa được duyệt!</span>
+          <button
+            onClick={() => setActiveTab('BOOKINGS')}
+            style={{
+              backgroundColor: '#fff',
+              color: '#ef4444',
+              border: 'none',
+              padding: '6px 12px',
+              borderRadius: '4px',
+              fontWeight: 'bold',
+              cursor: 'pointer'
+            }}
+          >
+            Xem & Duyệt ngay
+          </button>
+        </div>
+      )}
+
       {/* HEADER & TABS */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
         <div>
@@ -277,7 +409,7 @@ function CashierInterface() {
               color: '#fff'
             }}
           >
-            🪑 Sơ đồ bàn ({tables.filter((t) => t.status === 'OCCUPIED').length}/{tables.length})
+            🪑 Sơ đồ bàn ({tables.filter((t) => t.status === 'OCCUPIED' || t.status === 'RESERVED').length}/{tables.length})
           </button>
 
           <button
@@ -311,23 +443,39 @@ function CashierInterface() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '15px' }}>
             {tables.map((table) => {
               const isOccupied = table.status === 'OCCUPIED';
+              const isReserved = table.status === 'RESERVED';
+
+              let bgColor = '#064e3b';
+              let borderColor = '#10b981';
+              let statusText = '🟢 BÀN TRỐNG';
+
+              if (isOccupied) {
+                bgColor = '#7f1d1d';
+                borderColor = '#ef4444';
+                statusText = '🔴 ĐANG CÓ KHÁCH';
+              } else if (isReserved) {
+                bgColor = '#78350f';
+                borderColor = '#f59e0b';
+                statusText = '🟡 GIỮ BÀN (ĐÃ DUYỆT)';
+              }
+
               return (
                 <div
                   key={table._id || table.code || Math.random()}
                   onClick={() => handleSelectTable(table)}
                   style={{
-                    background: isOccupied ? '#7f1d1d' : '#064e3b',
+                    background: bgColor,
                     borderRadius: '10px',
                     padding: '18px 10px',
                     textAlign: 'center',
                     cursor: 'pointer',
                     boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                    border: isOccupied ? '2px solid #ef4444' : '2px solid #10b981'
+                    border: `2px solid ${borderColor}`
                   }}
                 >
                   <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{table.name || table.code}</div>
-                  <div style={{ fontSize: '12px', marginTop: '6px', fontWeight: '600', color: isOccupied ? '#fca5a5' : '#6ee7b7' }}>
-                    {isOccupied ? '🔴 ĐANG CÓ KHÁCH' : '🟢 BÀN TRỐNG'}
+                  <div style={{ fontSize: '12px', marginTop: '6px', fontWeight: '600', color: isOccupied ? '#fca5a5' : isReserved ? '#fde68a' : '#6ee7b7' }}>
+                    {statusText}
                   </div>
                   <button
                     style={{
@@ -338,7 +486,7 @@ function CashierInterface() {
                       border: 'none',
                       fontSize: '12px',
                       fontWeight: 'bold',
-                      background: isOccupied ? '#ef4444' : '#374151',
+                      background: isOccupied ? '#ef4444' : isReserved ? '#d97706' : '#374151',
                       color: '#fff',
                       cursor: 'pointer'
                     }}
@@ -352,7 +500,7 @@ function CashierInterface() {
         </div>
       )}
 
-      {/* TAB 2: ĐƠN ĐẶT BÀN */}
+      {/* TAB 2: ĐƠN ĐẶT BÀN - CÓ THÊM CỘT BÀN ĐẶT HỢP LỆ */}
       {activeTab === 'BOOKINGS' && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', background: '#1f2937', borderRadius: '10px' }}>
@@ -360,41 +508,63 @@ function CashierInterface() {
               <tr style={{ background: '#374151', color: '#fbbf24', textAlign: 'left', fontSize: '14px' }}>
                 <th style={{ padding: '12px' }}>Khách hàng</th>
                 <th style={{ padding: '12px' }}>Số điện thoại</th>
-                <th style={{ padding: '12px' }}>Thời gian</th>
+                <th style={{ padding: '12px' }}>🪑 Bàn đặt</th>
+                <th style={{ padding: '12px' }}>Thời gian hẹn</th>
                 <th style={{ padding: '12px' }}>Số lượng</th>
                 <th style={{ padding: '12px' }}>Ghi chú / Trạng thái</th>
                 <th style={{ padding: '12px', textAlign: 'center' }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
-              {bookings.map((item) => (
-                <tr key={item._id} style={{ borderBottom: '1px solid #374151', fontSize: '14px' }}>
-                  <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.customerName || item.fullName || 'Khách Vô Danh'}</td>
-                  <td style={{ padding: '12px', color: '#60a5fa' }}>{item.phone || 'N/A'}</td>
-                  <td style={{ padding: '12px' }}>{item.date || item.bookingTime || 'N/A'} - {item.time || ''}</td>
-                  <td style={{ padding: '12px' }}>👥 {item.adults || item.guests || 1} người</td>
-                  <td style={{ padding: '12px' }}>
-                    <div style={{ color: '#9ca3af', fontSize: '12px' }}>{item.note || 'Không ghi chú'}</div>
-                    <strong style={{ color: item.status === 'CONFIRMED' ? '#10b981' : item.status === 'CANCELLED' ? '#ef4444' : '#f59e0b' }}>
-                      {item.status || 'PENDING'}
-                    </strong>
-                  </td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                      {item.status !== 'CONFIRMED' && (
-                        <button onClick={() => handleUpdateBookingStatus(item._id, 'CONFIRMED')} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}>
-                          Duyệt
-                        </button>
-                      )}
-                      {item.status !== 'CANCELLED' && (
-                        <button onClick={() => handleUpdateBookingStatus(item._id, 'CANCELLED')} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}>
-                          Hủy
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {bookings.map((item) => {
+                const status = (item.status || 'PENDING').toUpperCase();
+                const isConfirmed = status === 'CONFIRMED';
+                const isCancelled = status === 'CANCELLED';
+
+                return (
+                  <tr key={item._id || item.id} style={{ borderBottom: '1px solid #374151', fontSize: '14px' }}>
+                    <td style={{ padding: '12px', fontWeight: 'bold' }}>{item.customerName || item.fullName || item.name || 'Khách Vô Danh'}</td>
+                    <td style={{ padding: '12px', color: '#60a5fa' }}>{item.phone || item.phoneNumber || 'N/A'}</td>
+                    
+                    {/* LẤY HIỂN THỊ CHÍNH XÁC BÀN ĐƯỢC CHỌN */}
+                    <td style={{ padding: '12px', color: '#38bdf8', fontWeight: 'bold' }}>
+                      {getDisplayTableName(item)}
+                    </td>
+
+                    <td style={{ padding: '12px', color: '#fbbf24', fontWeight: '500' }}>
+                      ⏱️ {formatBookingTime(item)}
+                    </td>
+
+                    <td style={{ padding: '12px' }}>👥 {item.adults || item.guests || item.peopleCount || 1} người</td>
+                    <td style={{ padding: '12px' }}>
+                      <div style={{ color: '#9ca3af', fontSize: '12px', marginBottom: '4px' }}>{item.note || 'Không ghi chú'}</div>
+                      <strong style={{ color: isConfirmed ? '#10b981' : isCancelled ? '#ef4444' : '#f59e0b' }}>
+                        {isConfirmed ? 'ĐÃ DUYỆT (GIỮ BÀN)' : isCancelled ? 'ĐÃ HỦY' : 'CHỜ DUYỆT'}
+                      </strong>
+                    </td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                        {!isConfirmed && !isCancelled && (
+                          <button
+                            onClick={() => handleUpdateBookingStatus(item, 'CONFIRMED')}
+                            style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                          >
+                            Duyệt giữ bàn
+                          </button>
+                        )}
+                        {!isCancelled && (
+                          <button
+                            onClick={() => handleUpdateBookingStatus(item, 'CANCELLED')}
+                            style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: '4px', cursor: 'pointer' }}
+                          >
+                            Hủy
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -408,7 +578,7 @@ function CashierInterface() {
             <button onClick={() => setSelectedTable(null)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'transparent', border: 'none', color: '#ef4444', fontSize: '24px', cursor: 'pointer' }}>✕</button>
 
             <h3 style={{ margin: '0 0 15px 0', color: '#fbbf24', textAlign: 'center' }}>
-              💳 QUẢN LÝ TÍNH TIỀN & THÊM MÓN - {selectedTable.name}
+              💳 QUẢN LÝ TÍNH TIỀN & THÊM MÓN - {selectedTable.name || selectedTable.code}
             </h3>
 
             {loadingOrder ? (
@@ -469,7 +639,6 @@ function CashierInterface() {
                   <div>
                     <h4 style={{ color: '#ef4444', marginTop: 0 }}>💰 Phương thức thanh toán</h4>
                     
-                    {/* Switch Tiền Mặt / Chuyển Khoản VietQR */}
                     <div style={{ display: 'flex', gap: '6px', marginBottom: '15px' }}>
                       <button
                         onClick={() => setPaymentMethod('CASH')}
@@ -506,7 +675,6 @@ function CashierInterface() {
                       </button>
                     </div>
 
-                    {/* HIỂN THỊ TIỀN MẶT */}
                     {paymentMethod === 'CASH' && (
                       <div style={{ background: '#1f2937', padding: '10px', borderRadius: '6px' }}>
                         <label style={{ fontSize: '12px', color: '#9ca3af' }}>Tiền khách đưa (VNĐ):</label>
@@ -523,7 +691,6 @@ function CashierInterface() {
                       </div>
                     )}
 
-                    {/* HIỂN THỊ MÃ VIETQR ĐỘNG */}
                     {paymentMethod === 'VIETQR' && (
                       <div style={{ background: '#fff', color: '#000', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
                         <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginBottom: '4px' }}>
