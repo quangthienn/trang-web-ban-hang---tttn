@@ -6,21 +6,16 @@ const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 function CashierInterface() {
   const [activeTab, setActiveTab] = useState('TABLES'); // 'TABLES' hoặc 'BOOKINGS'
   
-  // State Sơ đồ bàn & Thanh toán
+  // State Sơ đồ bàn & Order thêm món
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
   const [currentOrder, setCurrentOrder] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('CASH'); // 'CASH' hoặc 'TRANSFER'
   const [loadingOrder, setLoadingOrder] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // State Quản lý Menu để gọi thêm món
+  // State Quản lý Menu & Số lượng món đang chọn thêm
   const [menuItems, setMenuItems] = useState([]);
-  const [orderQuantities, setOrderQuantities] = useState({}); // Lưu số lượng tạm khi thu ngân chọn món thêm
-
-  // State Quản lý QR Chuyển khoản
-  const [qrData, setQrData] = useState(null);
-  const [loadingQr, setLoadingQr] = useState(false);
+  const [orderQuantities, setOrderQuantities] = useState({});
 
   // State Quản lý Đặt bàn
   const [bookings, setBookings] = useState([]);
@@ -38,10 +33,10 @@ function CashierInterface() {
     }
   };
 
-  // 2️⃣ Lấy danh sách Menu từ Backend (để phục vụ việc chọn món thêm)
+  // 2️⃣ Lấy danh sách Menu từ Backend
   const fetchMenu = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/products`); // Hoặc /api/menu tùy API backend của bạn
+      const res = await fetch(`${API_URL}/api/products`);
       if (res.ok) {
         const data = await res.json();
         setMenuItems(data);
@@ -80,15 +75,13 @@ function CashierInterface() {
     return () => clearInterval(interval);
   }, []);
 
-  // 4️⃣ Khi chọn 1 Bàn để xem/thêm món hoặc thanh toán
+  // 4️⃣ Khi bấm vào bàn có khách -> Mở giao diện Xem món cũ & Order thêm
   const handleSelectTable = async (table) => {
     if (table.status === 'AVAILABLE') return;
 
     setSelectedTable(table);
     setLoadingOrder(true);
     setCurrentOrder(null);
-    setQrData(null);
-    setPaymentMethod('CASH');
     setOrderQuantities({});
 
     try {
@@ -110,7 +103,7 @@ function CashierInterface() {
     }
   };
 
-  // Thay đổi số lượng của món khi thu ngân chọn gọi thêm
+  // Tăng/giảm số lượng món thêm
   const handleQuantityChange = (productId, delta) => {
     setOrderQuantities((prev) => {
       const current = prev[productId] || 0;
@@ -124,11 +117,10 @@ function CashierInterface() {
     });
   };
 
-  // 5️⃣ Gửi món thêm xuống bếp / cập nhật order vào Backend
+  // 5️⃣ Gửi món thêm xuống bếp
   const handleAddItemsToOrder = async () => {
     if (!currentOrder) return;
 
-    // Chuyển đổi state orderQuantities thành mảng các món được chọn
     const itemsToAdd = Object.keys(orderQuantities).map((productId) => {
       const product = menuItems.find((p) => (p._id || p.id) === productId);
       return {
@@ -146,7 +138,6 @@ function CashierInterface() {
 
     setSubmitting(true);
     try {
-      // Gọi API thêm món (Thường là POST hoặc PUT tới /api/orders/:id/items hoặc /api/orders/add-items)
       const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,7 +148,7 @@ function CashierInterface() {
         const updatedOrderData = await res.json();
         alert('✅ Đã thêm món thành công và gửi thông báo xuống bếp!');
         setCurrentOrder(updatedOrderData.order || updatedOrderData);
-        setOrderQuantities({}); // Reset lại bộ chọn món
+        setOrderQuantities({}); // Reset lại bộ chọn món thêm
       } else {
         const errData = await res.json().catch(() => ({}));
         alert(`❌ Lỗi thêm món: ${errData.message || 'Không thể cập nhật hóa đơn!'}`);
@@ -170,60 +161,7 @@ function CashierInterface() {
     }
   };
 
-  // 6️⃣ Gọi API tạo mã VietQR khi chọn hình thức Chuyển khoản
-  const handleGenerateQR = async (orderId) => {
-    setLoadingQr(true);
-    try {
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/create-qr`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setQrData(data);
-      } else {
-        alert(`❌ ${data.message || 'Không thể tạo mã QR!'}`);
-      }
-    } catch (err) {
-      console.error('Lỗi tạo QR:', err);
-      alert('❌ Lỗi kết nối khi tạo mã QR!');
-    } finally {
-      setLoadingQr(false);
-    }
-  };
-
-  // 7️⃣ Xử lý Xác nhận Thanh toán hóa đơn
-  const handleConfirmPayment = async () => {
-    if (!currentOrder) return;
-
-    setSubmitting(true);
-    try {
-      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/pay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentMethod: paymentMethod === 'TRANSFER' ? 'BANK_TRANSFER' : 'CASH'
-        })
-      });
-
-      if (res.ok) {
-        alert(`✅ Thanh toán thành công cho ${selectedTable.name}! Bàn đã được giải phóng.`);
-        setSelectedTable(null);
-        setCurrentOrder(null);
-        setQrData(null);
-        fetchTables();
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        alert(`❌ Lỗi thanh toán: ${errData.message || 'Không thể cập nhật trạng thái!'}`);
-      }
-    } catch (err) {
-      alert('❌ Lỗi kết nối máy chủ!');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // 8️⃣ Xử lý Cập nhật Trạng thái Đặt bàn
+  // 6️⃣ Cập nhật Trạng thái Đặt bàn
   const handleUpdateBookingStatus = async (bookingId, newStatus) => {
     try {
       let res = await fetch(`${API_URL}/api/bookings/${bookingId}`, {
@@ -311,7 +249,7 @@ function CashierInterface() {
         <div>
           <h2 style={{ color: '#fbbf24', margin: 0 }}>💵 MÀN HÌNH QUẢN LÝ THU NGÂN</h2>
           <p style={{ color: '#9ca3af', fontSize: '14px', margin: '5px 0 0 0' }}>
-            Quản lý sơ đồ bàn, gọi thêm món, thanh toán hóa đơn và đơn đặt bàn.
+            Quản lý sơ đồ bàn, gọi thêm món gửi bếp và đơn đặt bàn.
           </p>
         </div>
 
@@ -372,7 +310,7 @@ function CashierInterface() {
       {activeTab === 'TABLES' && (
         <div>
           <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-            Bấm vào bàn màu <strong>ĐỎ (có khách)</strong> để xem hóa đơn, gọi thêm món hoặc thanh toán.
+            Bấm vào bàn màu <strong>ĐỎ (có khách)</strong> để xem danh sách món đã đặt và chọn món thêm gửi bếp.
           </p>
 
           <div
@@ -492,7 +430,7 @@ function CashierInterface() {
         </div>
       )}
 
-      {/* ==================== POPUP QUẢN LÝ BÀN & THANH TOÁN (KÈM GỌI THÊM MÓN) ==================== */}
+      {/* ==================== POPUP: BÊN TRÁI XEM MÓN CŨ, BÊN PHẢI MENU CHỌN THÊM ==================== */}
       {selectedTable && (
         <div
           style={{
@@ -511,7 +449,7 @@ function CashierInterface() {
           <div
             style={{
               background: '#1f2937',
-              width: '850px',
+              width: '900px',
               maxWidth: '95vw',
               maxHeight: '90vh',
               overflowY: 'auto',
@@ -522,7 +460,7 @@ function CashierInterface() {
             }}
           >
             <button
-              onClick={() => { setSelectedTable(null); setQrData(null); }}
+              onClick={() => setSelectedTable(null)}
               style={{
                 position: 'absolute',
                 top: '15px',
@@ -538,33 +476,35 @@ function CashierInterface() {
             </button>
 
             <h3 style={{ margin: '0 0 15px 0', color: '#fbbf24', textAlign: 'center' }}>
-              🧾 CHI TIẾT BÀN & HÓA ĐƠN - {selectedTable.name}
+              🍽️ QUẢN LÝ GỌI THÊM MÓN - {selectedTable.name}
             </h3>
 
             {loadingOrder ? (
-              <p style={{ textAlign: 'center', margin: '30px 0' }}>⏳ Đang tải thông tin hóa đơn...</p>
+              <p style={{ textAlign: 'center', margin: '30px 0' }}>⏳ Đang tải thông tin món ăn...</p>
             ) : !currentOrder ? (
               <p style={{ textAlign: 'center', color: '#ef4444', margin: '30px 0' }}>
-                Bàn này chưa có món hoặc đã thanh toán xong!
+                Bàn này chưa có hóa đơn hoạt động!
               </p>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                {/* CỘT TRÁI: HÓA ĐƠN HIỆN TẠI & THANH TOÁN */}
-                <div>
-                  <h4 style={{ color: '#38bdf8', marginTop: 0 }}>📋 Các món đã gọi:</h4>
-                  <div style={{ maxHeight: '150px', overflowY: 'auto', background: '#111827', padding: '10px', borderRadius: '8px', marginBottom: '10px' }}>
+                
+                {/* CỘT TRÁI: DANH SÁCH MÓN ĐÃ ĐẶT (KHÔNG CÓ NÚT THANH TOÁN) */}
+                <div style={{ background: '#111827', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
+                  <h4 style={{ color: '#38bdf8', marginTop: 0, marginBottom: '10px' }}>📋 Các món khách đã đặt trước đó:</h4>
+                  
+                  <div style={{ flex: 1, maxHeight: '300px', overflowY: 'auto', marginBottom: '10px' }}>
                     <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ borderBottom: '1px solid #374151', color: '#9ca3af' }}>
-                          <th style={{ textAlign: 'left', paddingBottom: '5px' }}>Món</th>
-                          <th style={{ textAlign: 'center', paddingBottom: '5px' }}>SL</th>
-                          <th style={{ textAlign: 'right', paddingBottom: '5px' }}>Thành tiền</th>
+                          <th style={{ textAlign: 'left', paddingBottom: '6px' }}>Tên món</th>
+                          <th style={{ textAlign: 'center', paddingBottom: '6px' }}>SL</th>
+                          <th style={{ textAlign: 'right', paddingBottom: '6px' }}>Thành tiền</th>
                         </tr>
                       </thead>
                       <tbody>
                         {currentOrder.items?.map((item, idx) => (
                           <tr key={idx} style={{ borderBottom: '1px solid #1f2937' }}>
-                            <td style={{ padding: '6px 0' }}>{item.name}</td>
+                            <td style={{ padding: '8px 0' }}>{item.name}</td>
                             <td style={{ textAlign: 'center' }}>{item.quantity}</td>
                             <td style={{ textAlign: 'right' }}>{(item.price * item.quantity).toLocaleString('vi-VN')}đ</td>
                           </tr>
@@ -573,60 +513,17 @@ function CashierInterface() {
                     </table>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', marginBottom: '12px', padding: '8px', background: '#374151', borderRadius: '6px' }}>
-                    <span>TỔNG CỘNG:</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', padding: '10px', background: '#374151', borderRadius: '6px' }}>
+                    <span>TỔNG TIỀN HIỆN TẠI:</span>
                     <span>{currentOrder.totalAmount?.toLocaleString('vi-VN')}đ</span>
                   </div>
-
-                  <div style={{ marginBottom: '12px' }}>
-                    <label style={{ display: 'block', marginBottom: '6px', fontSize: '13px', color: '#d1d5db' }}>Hình thức thanh toán:</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => { setPaymentMethod('CASH'); setQrData(null); }}
-                        style={{ flex: 1, padding: '8px', borderRadius: '6px', border: paymentMethod === 'CASH' ? '2px solid #10b981' : '1px solid #374151', background: paymentMethod === 'CASH' ? '#065f46' : '#374151', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-                      >
-                        💵 Tiền mặt
-                      </button>
-                      <button
-                        onClick={() => { setPaymentMethod('TRANSFER'); if (!qrData) handleGenerateQR(currentOrder._id); }}
-                        style={{ flex: 1, padding: '8px', borderRadius: '6px', border: paymentMethod === 'TRANSFER' ? '2px solid #3b82f6' : '1px solid #374151', background: paymentMethod === 'TRANSFER' ? '#1e40af' : '#374151', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}
-                      >
-                        💳 Chuyển khoản
-                      </button>
-                    </div>
-                  </div>
-
-                  {paymentMethod === 'TRANSFER' && (
-                    <div style={{ textAlign: 'center', background: '#111827', padding: '10px', borderRadius: '8px', marginBottom: '12px' }}>
-                      {loadingQr ? (
-                        <p style={{ color: '#9ca3af', margin: '5px 0', fontSize: '12px' }}>⏳ Đang tạo mã VietQR...</p>
-                      ) : qrData ? (
-                        <div>
-                          <div style={{ background: '#fff', display: 'inline-block', padding: '6px', borderRadius: '6px' }}>
-                            <img src={qrData.qrImageUrl} alt="VietQR" style={{ width: '140px', height: '140px', display: 'block' }} />
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#93c5fd', marginTop: '5px' }}>
-                            Nội dung: <strong style={{ color: '#ef4444' }}>{qrData.memo}</strong>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleConfirmPayment}
-                    disabled={submitting}
-                    style={{ width: '100%', padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
-                  >
-                    {submitting ? '⏳ Đang xử lý...' : '✅ XÁC NHẬN THANH TOÁN & GIẢI PHÓNG BÀN'}
-                  </button>
                 </div>
 
-                {/* CỘT PHẢI: GỌI THÊM MÓN GỬI BẾP */}
+                {/* CỘT PHẢI: DANH SÁCH MENU ĐỂ CHỌN MÓN THÊM & GỬI BẾP */}
                 <div style={{ background: '#111827', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
-                  <h4 style={{ color: '#fbbf24', marginTop: 0, marginBottom: '10px' }}>➕ Order Thêm Món (Gửi Bếp)</h4>
+                  <h4 style={{ color: '#fbbf24', marginTop: 0, marginBottom: '10px' }}>➕ Chọn món thêm gửi bếp</h4>
                   
-                  <div style={{ flex: 1, maxHeight: '200px', overflowY: 'auto', marginBottom: '10px', paddingRight: '5px' }}>
+                  <div style={{ flex: 1, maxHeight: '250px', overflowY: 'auto', marginBottom: '12px', paddingRight: '5px' }}>
                     {menuItems.length === 0 ? (
                       <p style={{ color: '#9ca3af', fontSize: '13px', textAlign: 'center' }}>Đang tải thực đơn...</p>
                     ) : (
@@ -642,14 +539,14 @@ function CashierInterface() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <button
                                 onClick={() => handleQuantityChange(prodId, -1)}
-                                style={{ width: '24px', height: '24px', background: '#374151', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                                style={{ width: '26px', height: '26px', background: '#374151', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
                               >
                                 -
                               </button>
-                              <span style={{ fontSize: '13px', width: '20px', textAlign: 'center' }}>{qty}</span>
+                              <span style={{ fontSize: '13px', width: '22px', textAlign: 'center' }}>{qty}</span>
                               <button
                                 onClick={() => handleQuantityChange(prodId, 1)}
-                                style={{ width: '24px', height: '24px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                                style={{ width: '26px', height: '26px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
                               >
                                 +
                               </button>
@@ -665,19 +562,20 @@ function CashierInterface() {
                     disabled={submitting || Object.keys(orderQuantities).length === 0}
                     style={{
                       width: '100%',
-                      padding: '10px',
-                      background: Object.keys(orderQuantities).length > 0 ? '#f59e0b' : '#374151',
+                      padding: '12px',
+                      background: Object.keys(orderQuantities).length > 0 ? '#10b981' : '#374151',
                       color: '#fff',
                       border: 'none',
                       borderRadius: '6px',
-                      fontSize: '14px',
+                      fontSize: '15px',
                       fontWeight: 'bold',
                       cursor: Object.keys(orderQuantities).length > 0 ? 'pointer' : 'not-allowed'
                     }}
                   >
-                    🚀 Gửi Món Thêm Xuống Bếp
+                    {submitting ? '⏳ Đang gửi...' : '🚀 XÁC NHẬN GỬI MÓN THÊM XUỐNG BẾP'}
                   </button>
                 </div>
+
               </div>
             )}
           </div>
@@ -687,4 +585,4 @@ function CashierInterface() {
   );
 }
 
-export default CashierInterface;
+IncentiveExport default CashierInterface;
