@@ -6,30 +6,34 @@ function WaiterInterface() {
   const [tables, setTables] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [reservations, setReservations] = useState([]); // 👈 Thêm state lưu đơn đặt bàn
 
   const [selectedTable, setSelectedTable] = useState(null);
   const [existingOrder, setExistingOrder] = useState(null); // Món cũ đã gọi
   const [newCart, setNewCart] = useState([]); // Món MỚI chọn ở lượt này
   const [loading, setLoading] = useState(false);
 
-  // 1️⃣ Tải dữ liệu từ Backend (Có bọc phòng thủ tránh crash .map)
+  // 1️⃣ Tải dữ liệu từ Backend (Lấy thêm API Reservations)
   const fetchData = async () => {
     try {
-      const [resTables, resMenu, resOrders] = await Promise.all([
+      const [resTables, resMenu, resOrders, resReservations] = await Promise.all([
         fetch(`${API_URL}/api/tables`).then((r) => r.json()).catch(() => []),
         fetch(`${API_URL}/api/products`).then((r) => r.json()).catch(async () => {
           return fetch(`${API_URL}/api/menu`).then((r) => r.json()).catch(() => []);
         }),
-        fetch(`${API_URL}/api/orders`).then((r) => r.json()).catch(() => [])
+        fetch(`${API_URL}/api/orders`).then((r) => r.json()).catch(() => []),
+        fetch(`${API_URL}/api/reservations`).then((r) => r.json()).catch(() => []) // 👈 Gọi thêm API Đặt bàn
       ]);
 
       const safeTables = Array.isArray(resTables) ? resTables : resTables.tables || resTables.data || [];
       const safeMenu = Array.isArray(resMenu) ? resMenu : resMenu.products || resMenu.menu || resMenu.data || [];
       const safeOrders = Array.isArray(resOrders) ? resOrders : resOrders.orders || resOrders.data || [];
+      const safeReservations = Array.isArray(resReservations) ? resReservations : resReservations.reservations || resReservations.data || [];
 
       setTables(safeTables);
       setMenuItems(safeMenu);
       setOrders(safeOrders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED'));
+      setReservations(safeReservations.filter((r) => r.status === 'APPROVED')); // 👈 Chỉ lấy các đơn ĐÃ DUYỆT
     } catch (err) {
       console.error('❌ Lỗi tải dữ liệu:', err);
     }
@@ -41,13 +45,24 @@ function WaiterInterface() {
     return () => clearInterval(timer);
   }, []);
 
-  // Kiểm tra bàn đang có khách hay trống
-  const checkIsOccupied = (table) => {
-    if (!table) return false;
+  // 🟡 Bổ sung logic tính toán chuẩn 3 trạng thái bàn: OCCUPIED (Đỏ) | RESERVED (Vàng) | AVAILABLE (Xanh)
+  const getTableStatus = (table) => {
+    if (!table) return 'AVAILABLE';
+
+    // 1. Kiểm tra bàn đang có khách ngồi (Có order chưa thanh toán) -> MÀU ĐỎ
     const hasActiveOrder = orders.some(
       (o) => (o.tableCode === table.code || o.tableName === table.name) && o.status !== 'PAID'
     );
-    return table.status === 'OCCUPIED' || hasActiveOrder;
+    if (table.status === 'OCCUPIED' || hasActiveOrder) return 'OCCUPIED';
+
+    // 2. Kiểm tra bàn có đơn ĐẶT BÀN đã được DUYỆT -> MÀU VÀNG
+    const isReserved = reservations.some(
+      (r) => r.tableId === table._id || r.tableName === table.name || r.tableName === table.code
+    );
+    if (table.status === 'RESERVED' || table.status === 'BOOKED' || isReserved) return 'RESERVED';
+
+    // 3. Mặc định -> MÀU XANH
+    return 'AVAILABLE';
   };
 
   // 2️⃣ Mở Popup chọn món cho bàn
@@ -101,7 +116,7 @@ function WaiterInterface() {
 
   const newCartTotal = newCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // 4️⃣ GỬI ORDER XUỐNG BẾP (Fix triệt để lỗi trùng lặp món cũ)
+  // 4️⃣ GỬI ORDER XUỐNG BẾP
   const handleSubmitOrder = async () => {
     if (newCart.length === 0) {
       alert('⚠️ Vui lòng chọn ít nhất 1 món mới trước khi gửi!');
@@ -127,7 +142,7 @@ function WaiterInterface() {
           alert('❌ Lỗi khi gửi thêm món!');
         }
       } else {
-        // TRƯỜNG HỢP 2: BÀN TRỐNG -> Tạo Order MỚI & Đổi Bàn sang OCCUPIED
+        // TRƯỜNG HỢP 2: BÀN TRỐNG / ĐẶT TRƯỚC -> Tạo Order MỚI & Chuyển Bàn sang OCCUPIED (Đỏ)
         const orderData = {
           tableId: selectedTable._id,
           tableCode: selectedTable.code || selectedTable.name,
@@ -192,17 +207,21 @@ function WaiterInterface() {
   const safeTables = Array.isArray(tables) ? tables : [];
   const safeMenu = Array.isArray(menuItems) ? menuItems : [];
   const totalTables = safeTables.length;
-  const occupiedCount = safeTables.filter((t) => checkIsOccupied(t)).length;
-  const availableCount = totalTables - occupiedCount;
+
+  // Đếm số lượng theo 3 trạng thái
+  const occupiedCount = safeTables.filter((t) => getTableStatus(t) === 'OCCUPIED').length;
+  const reservedCount = safeTables.filter((t) => getTableStatus(t) === 'RESERVED').length;
+  const availableCount = totalTables - occupiedCount - reservedCount;
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#111827', minHeight: '90vh', color: '#fff', fontFamily: 'sans-serif' }}>
-      {/* BANNER THỐNG KÊ */}
+      {/* BANNER THỐNG KÊ 3 MÀU */}
       <div style={{ background: '#1f2937', padding: '16px 20px', borderRadius: '12px', marginBottom: '20px' }}>
         <h2 style={{ margin: '0 0 10px 0', color: '#38bdf8' }}>🛎️ MÀN HÌNH PHỤC VỤ (ORDER MÓN)</h2>
-        <div style={{ display: 'flex', gap: '20px', fontSize: '15px', fontWeight: 'bold' }}>
+        <div style={{ display: 'flex', gap: '20px', fontSize: '15px', fontWeight: 'bold', flexWrap: 'wrap' }}>
           <span style={{ color: '#9ca3af' }}>📊 Tổng số: {totalTables} bàn</span>
           <span style={{ color: '#10b981' }}>🟢 Bàn trống: {availableCount}</span>
+          <span style={{ color: '#facc15' }}>🟨 Đã đặt trước: {reservedCount}</span>
           <span style={{ color: '#ef4444' }}>🔴 Đang có khách: {occupiedCount}</span>
         </div>
       </div>
@@ -210,14 +229,39 @@ function WaiterInterface() {
       {/* DANH SÁCH BÀN */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '16px' }}>
         {safeTables.map((table) => {
-          const isOccupied = checkIsOccupied(table);
+          const status = getTableStatus(table);
+
+          // Cấu hình Màu sắc & Nhãn
+          let cardBg = '#064e3b';
+          let borderClr = '#10b981';
+          let badgeBg = '#10b981';
+          let badgeText = '🟢 BÀN TRỐNG';
+          let btnBg = '#3b82f6';
+          let btnText = '📝 Mở Bàn Gọi Món';
+
+          if (status === 'OCCUPIED') {
+            cardBg = '#7f1d1d';
+            borderClr = '#ef4444';
+            badgeBg = '#ef4444';
+            badgeText = '🔴 CÓ KHÁCH';
+            btnBg = '#ef4444';
+            btnText = '➕ Gọi Thêm Món';
+          } else if (status === 'RESERVED') {
+            cardBg = '#713f12';
+            borderClr = '#facc15';
+            badgeBg = '#eab308';
+            badgeText = '🟨 ĐÃ ĐẶT TRƯỚC';
+            btnBg = '#ca8a04';
+            btnText = '📝 Nhận Bàn Gọi Món';
+          }
+
           return (
             <div
               key={table._id || table.code || Math.random()}
               onClick={() => handleSelectTable(table)}
               style={{
-                background: isOccupied ? '#7f1d1d' : '#064e3b',
-                border: `2px solid ${isOccupied ? '#ef4444' : '#10b981'}`,
+                background: cardBg,
+                border: `2px solid ${borderClr}`,
                 borderRadius: '12px',
                 padding: '16px',
                 textAlign: 'center',
@@ -233,12 +277,12 @@ function WaiterInterface() {
                   borderRadius: '20px',
                   fontSize: '12px',
                   fontWeight: 'bold',
-                  backgroundColor: isOccupied ? '#ef4444' : '#10b981',
+                  backgroundColor: badgeBg,
                   color: '#fff',
                   marginBottom: '10px'
                 }}
               >
-                {isOccupied ? '🔴 CÓ KHÁCH' : '🟢 BÀN TRỐNG'}
+                {badgeText}
               </span>
 
               <button
@@ -250,11 +294,11 @@ function WaiterInterface() {
                   fontWeight: 'bold',
                   fontSize: '13px',
                   cursor: 'pointer',
-                  backgroundColor: isOccupied ? '#ef4444' : '#3b82f6',
+                  backgroundColor: btnBg,
                   color: '#fff'
                 }}
               >
-                {isOccupied ? '➕ Gọi Thêm Món' : '📝 Mở Bàn Gọi Món'}
+                {btnText}
               </button>
             </div>
           );
@@ -266,7 +310,7 @@ function WaiterInterface() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#1f2937', width: '92%', maxWidth: '1000px', height: '85vh', borderRadius: '12px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', overflow: 'hidden' }}>
             
-            {/* CỘT TRAI: DANH SÁCH MENU MÓN */}
+            {/* CỘT TRÁI: DANH SÁCH MENU MÓN */}
             <div style={{ padding: '20px', overflowY: 'auto', borderRight: '1px solid #374151' }}>
               <h3 style={{ marginTop: 0, color: '#fbbf24' }}>🍽️ Danh Sách Thực Đơn</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '12px' }}>
@@ -293,7 +337,14 @@ function WaiterInterface() {
                   <button onClick={() => setSelectedTable(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '22px', cursor: 'pointer' }}>✕</button>
                 </div>
 
-                {/* 1. HIỂN THỊ MÓN ĐÃ GỬI BẾP TRƯỚC ĐÓ (NẾU BÀN ĐANG CÓ KHÁCH) */}
+                {/* THÔNG BÁO DÀNH CHO BÀN ĐẶT TRƯỚC */}
+                {getTableStatus(selectedTable) === 'RESERVED' && !existingOrder && (
+                  <div style={{ marginTop: '12px', background: '#713f12', color: '#facc15', padding: '10px', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', border: '1px solid #ca8a04' }}>
+                    ⚠️ Bàn này đã được duyệt đặt trước. Bấm "GỬI XUỐNG BẾP" sẽ nhận bàn cho khách!
+                  </div>
+                )}
+
+                {/* 1. HIỂN THỊ MÓN ĐÃ GỬI BẾP TRƯỚC ĐÓ */}
                 {existingOrder && existingOrder.items && existingOrder.items.length > 0 && (
                   <div style={{ marginTop: '15px', background: '#1f2937', padding: '10px', borderRadius: '8px', border: '1px solid #374151' }}>
                     <div style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 'bold', marginBottom: '8px' }}>
@@ -308,7 +359,7 @@ function WaiterInterface() {
                   </div>
                 )}
 
-                {/* 2. HIỂN THỊ CÁC MÓN MỚI DANG CHỌN THÊM */}
+                {/* 2. HIỂN THỊ CÁC MÓN MỚI ĐANG CHỌN THÊM */}
                 <div style={{ marginTop: '15px' }}>
                   <div style={{ fontSize: '13px', color: '#10b981', fontWeight: 'bold', marginBottom: '8px' }}>
                     ➕ Món MỚI chọn gọi lượt này:
@@ -345,7 +396,7 @@ function WaiterInterface() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  {checkIsOccupied(selectedTable) && (
+                  {getTableStatus(selectedTable) !== 'AVAILABLE' && (
                     <button
                       onClick={handleReleaseTable}
                       disabled={loading}
