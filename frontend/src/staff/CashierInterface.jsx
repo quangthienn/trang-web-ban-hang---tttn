@@ -147,7 +147,10 @@ function CashierInterface() {
       if (res.ok) {
         const updatedOrderData = await res.json();
         alert('✅ Đã thêm món thành công và gửi thông báo xuống bếp!');
-        setCurrentOrder(updatedOrderData.order || updatedOrderData);
+        
+        // Lấy dữ liệu order mới nhất trả về từ server gán thẳng vào state
+        const freshOrder = updatedOrderData.order || updatedOrderData;
+        setCurrentOrder(freshOrder);
         setOrderQuantities({}); // Reset lại bộ chọn món thêm
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -488,7 +491,7 @@ function CashierInterface() {
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 
-                {/* CỘT TRÁI: DANH SÁCH MÓN ĐÃ ĐẶT (KHÔNG CÓ NÚT THANH TOÁN) */}
+                {/* CỘT TRÁI: DANH SÁCH MÓN ĐÃ ĐẶT (ĐÃ GỬI BẾP) */}
                 <div style={{ background: '#111827', padding: '15px', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
                   <h4 style={{ color: '#38bdf8', marginTop: 0, marginBottom: '10px' }}>📋 Các món khách đã đặt trước đó:</h4>
                   
@@ -585,4 +588,4 @@ function CashierInterface() {
   );
 }
 
-IncentiveExport default CashierInterface;
+export default CashierInterface;
