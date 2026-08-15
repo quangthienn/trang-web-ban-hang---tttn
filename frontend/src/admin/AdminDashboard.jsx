@@ -13,8 +13,6 @@ function AdminDashboard() {
     try {
       const res = await fetch(`${API_URL}/api/orders`);
       const data = await res.json();
-      
-      // Đảm bảo lấy đúng mảng dữ liệu trả về từ API
       const safeOrders = Array.isArray(data) ? data : data.orders || data.data || [];
       setOrders(safeOrders);
     } catch (err) {
@@ -28,10 +26,22 @@ function AdminDashboard() {
     fetchOrders();
   }, []);
 
-  // Lọc chỉ tính các đơn Hợp lệ / Đã thanh toán (Nhiều backend trả về PAID hoặc COMPLETED)
+  // Hàm định dạng ngày giờ chi tiết (VD: 14:30 - 15/08/2026)
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'Chưa ghi nhận';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Thời gian lỗi';
+
+    const timeStr = date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const dateStr = date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    
+    return `${timeStr} - ${dateStr}`;
+  };
+
+  // Lọc các đơn đã thanh toán hoặc hợp lệ
   const paidOrders = orders.filter((o) => o.status === 'PAID' || o.status === 'COMPLETED' || !o.status);
 
-  // Lọc theo thời gian chọn trên giao diện
+  // Lọc theo khoảng thời gian
   const filteredOrders = paidOrders.filter((order) => {
     const orderDate = new Date(order.updatedAt || order.createdAt || order.date);
     const now = new Date();
@@ -48,19 +58,16 @@ function AdminDashboard() {
     return true;
   });
 
-  // 1. TÍNH TỔNG DOANH THU
+  // TÍNH TOÁN DOANH THU
   const totalRevenue = filteredOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-
-  // 2. DOANH THU TIỀN MẶT VS CHUYỂN KHOẢN
   const cashRevenue = filteredOrders
     .filter((o) => o.paymentMethod === 'CASH')
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-
   const qrRevenue = filteredOrders
     .filter((o) => o.paymentMethod === 'VIETQR' || o.paymentMethod === 'TRANSFER' || o.paymentMethod === 'BANK')
     .reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
 
-  // 3. TOP MÓN BÁN CHẠY
+  // TOP MÓN BÁN CHẠY
   const itemMap = {};
   filteredOrders.forEach((order) => {
     if (Array.isArray(order.items)) {
@@ -79,11 +86,11 @@ function AdminDashboard() {
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh' }}>
       
-      {/* HEADER & THANH CÔNG CỤ */}
+      {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '22px', color: '#fbbf24' }}>📊 ADMIN DASHBOARD - THỐNG KÊ DOANH SỐ</h1>
-          <p style={{ margin: '4px 0 0 0', color: '#94a3b8', fontSize: '13px' }}>Tổng hợp báo cáo kinh doanh theo thời gian thực</p>
+          <p style={{ margin: '4px 0 0 0', color: '#94a3b8', fontSize: '13px' }}>Chi tiết lịch sử thanh toán & thời gian gọi món</p>
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>
@@ -107,18 +114,16 @@ function AdminDashboard() {
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>⏳ Đang tổng hợp số liệu...</div>
+        <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>⏳ Đang tổng hợp dữ liệu...</div>
       ) : (
         <>
           {/* CARDS TỔNG QUAN */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
-            
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px', borderLeft: '4px solid #10b981' }}>
               <div style={{ color: '#94a3b8', fontSize: '12px' }}>TỔNG DOANH THU</div>
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#34d399', marginTop: '4px' }}>
                 {totalRevenue.toLocaleString('vi-VN')} <span style={{ fontSize: '14px' }}>đ</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Tất cả hóa đơn hợp lệ</div>
             </div>
 
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px', borderLeft: '4px solid #f59e0b' }}>
@@ -126,7 +131,6 @@ function AdminDashboard() {
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fbbf24', marginTop: '4px' }}>
                 {cashRevenue.toLocaleString('vi-VN')} <span style={{ fontSize: '14px' }}>đ</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Thanh toán tại bàn/quầy</div>
             </div>
 
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px', borderLeft: '4px solid #3b82f6' }}>
@@ -134,7 +138,6 @@ function AdminDashboard() {
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#60a5fa', marginTop: '4px' }}>
                 {qrRevenue.toLocaleString('vi-VN')} <span style={{ fontSize: '14px' }}>đ</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Thanh toán qua ngân hàng</div>
             </div>
 
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px', borderLeft: '4px solid #a855f7' }}>
@@ -142,13 +145,11 @@ function AdminDashboard() {
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c084fc', marginTop: '4px' }}>
                 {filteredOrders.length} <span style={{ fontSize: '14px' }}>đơn</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Tổng số lượt gọi món</div>
             </div>
-
           </div>
 
-          {/* CHI TIẾT DỮ LIỆU */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+          {/* BẢNG CHI TIẾT */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
             
             {/* TOP MÓN BÁN CHẠY */}
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px' }}>
@@ -171,34 +172,38 @@ function AdminDashboard() {
               )}
             </div>
 
-            {/* DANH SÁCH ĐƠN HÀNG */}
+            {/* DANH SÁCH ĐƠN HÀNG KÈM MỐC THỜI GIAN */}
             <div style={{ backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px' }}>
-              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#fbbf24' }}>🧾 Lịch sử đơn hàng</h3>
-              <div style={{ overflowX: 'auto', maxHeight: '300px', overflowY: 'auto' }}>
+              <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#fbbf24' }}>🧾 Lịch sử đơn hàng & Thời gian</h3>
+              <div style={{ overflowX: 'auto', maxHeight: '350px', overflowY: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8' }}>
-                      <th style={{ padding: '6px' }}>Bàn</th>
-                      <th style={{ padding: '6px' }}>Hình thức</th>
-                      <th style={{ padding: '6px', textAlign: 'right' }}>Thành tiền</th>
+                      <th style={{ padding: '8px 6px' }}>Thời gian</th>
+                      <th style={{ padding: '8px 6px' }}>Bàn</th>
+                      <th style={{ padding: '8px 6px' }}>P.Thức</th>
+                      <th style={{ padding: '8px 6px', textAlign: 'right' }}>Thành tiền</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredOrders.length === 0 ? (
                       <tr>
-                        <td colSpan="3" style={{ padding: '15px', textAlign: 'center', color: '#64748b' }}>
-                          Không có dữ liệu đơn hàng.
+                        <td colSpan="4" style={{ padding: '15px', textAlign: 'center', color: '#64748b' }}>
+                          Chưa có lịch sử đơn hàng.
                         </td>
                       </tr>
                     ) : (
                       filteredOrders.map((o) => (
                         <tr key={o._id} style={{ borderBottom: '1px solid #1e293b' }}>
+                          <td style={{ padding: '8px 6px', color: '#cbd5e1', fontSize: '12px' }}>
+                            ⏱️ {formatDateTime(o.updatedAt || o.createdAt)}
+                          </td>
                           <td style={{ padding: '8px 6px', fontWeight: 'bold', color: '#38bdf8' }}>
-                            {o.tableName || o.tableCode || 'Bàn chưa đặt tên'}
+                            {o.tableName || o.tableCode || 'Bàn không tên'}
                           </td>
                           <td style={{ padding: '8px 6px' }}>
                             <span style={{ padding: '2px 6px', borderRadius: '4px', fontSize: '10px', backgroundColor: o.paymentMethod === 'CASH' ? '#065f46' : '#1e40af', color: '#fff' }}>
-                              {o.paymentMethod === 'CASH' ? 'TIỀN MẶT' : 'CHUYỂN KHOẢN'}
+                              {o.paymentMethod === 'CASH' ? 'TM' : 'CK'}
                             </span>
                           </td>
                           <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 'bold', color: '#34d399' }}>
