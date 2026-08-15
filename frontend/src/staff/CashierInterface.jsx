@@ -750,68 +750,79 @@ function CashierInterface() {
                       </button>
                     </div>
 
+                    {/* THANH TOÁN TIỀN MẶT */}
                     {paymentMethod === 'CASH' && (
-                      <div style={{ background: '#1f2937', padding: '10px', borderRadius: '6px' }}>
-                        <label style={{ fontSize: '12px', color: '#9ca3af' }}>Tiền khách đưa (VNĐ):</label>
+                      <div style={{ background: '#1f2937', padding: '12px', borderRadius: '6px', marginBottom: '10px' }}>
+                        <label style={{ display: 'block', fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>
+                          Tiền khách đưa (Đồng):
+                        </label>
                         <input
                           type="number"
                           value={cashReceived}
                           onChange={(e) => setCashReceived(e.target.value)}
-                          placeholder="Nhập số tiền..."
-                          style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #374151', background: '#111827', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
+                          placeholder="Ví dụ: 500000"
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            borderRadius: '4px',
+                            border: '1px solid #374151',
+                            background: '#111827',
+                            color: '#fff',
+                            fontSize: '14px',
+                            boxSizing: 'border-box'
+                          }}
                         />
-                        <div style={{ marginTop: '10px', fontSize: '13px', color: changeAmount >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
-                          Tiền thừa trả khách: {changeAmount >= 0 ? `${changeAmount.toLocaleString('vi-VN')}đ` : 'Chưa đủ tiền!'}
+                        <div style={{ marginTop: '10px', fontSize: '13px' }}>
+                          Tiền thừa trả khách:{' '}
+                          <strong style={{ color: changeAmount >= 0 ? '#10b981' : '#ef4444', fontSize: '15px' }}>
+                            {cashReceived !== '' 
+                              ? (changeAmount >= 0 ? `${changeAmount.toLocaleString('vi-VN')}đ` : 'Chưa đủ tiền')
+                              : '0đ'}
+                          </strong>
                         </div>
                       </div>
                     )}
 
+                    {/* THANH TOÁN VIETQR */}
                     {paymentMethod === 'VIETQR' && (
-                      <div style={{ background: '#fff', color: '#000', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginBottom: '4px' }}>
-                          MÃ CHUYỂN KHOẢN VIETQR AUTO
-                        </div>
+                      <div style={{ textAlign: 'center', background: '#fff', padding: '10px', borderRadius: '8px', marginBottom: '10px' }}>
                         <img
                           src={vietQrUrl}
-                          alt="VietQR Payment Code"
-                          style={{ width: '180px', height: '180px', objectFit: 'contain', margin: '0 auto', display: 'block', borderRadius: '6px' }}
+                          alt="VietQR Code"
+                          style={{ width: '180px', height: '180px', objectFit: 'contain' }}
                         />
-                        <div style={{ fontSize: '11px', marginTop: '6px', color: '#374151' }}>
-                          Số tiền: <strong>{totalAmount.toLocaleString('vi-VN')}đ</strong>
-                        </div>
-                        <div style={{ fontSize: '10px', color: '#6b7280' }}>
-                          STK: {BANK_CONFIG.accountNo} ({BANK_CONFIG.bankId})
-                        </div>
+                        <p style={{ color: '#000', fontSize: '12px', margin: '4px 0 0 0', fontWeight: 'bold' }}>
+                          Quét mã QR để chuyển khoản
+                        </p>
                       </div>
                     )}
                   </div>
 
+                  {/* NÚT XÁC NHẬN THANH TOÁN */}
                   <button
                     onClick={handleCheckout}
                     disabled={isProcessingPayment}
                     style={{
                       width: '100%',
-                      padding: '14px',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: 'none',
                       background: '#10b981',
                       color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '15px',
                       fontWeight: 'bold',
-                      cursor: 'pointer',
-                      marginTop: '12px'
+                      fontSize: '15px',
+                      cursor: isProcessingPayment ? 'not-allowed' : 'pointer',
+                      opacity: isProcessingPayment ? 0.7 : 1
                     }}
                   >
-                    {isProcessingPayment ? '⏳ Đang xác nhận...' : '✅ XÁC NHẬN ĐÃ THU TIỀN'}
+                    {isProcessingPayment ? '⏳ Đang xử lý...' : '✅ Hoàn tất Thanh toán & Giải phóng bàn'}
                   </button>
                 </div>
-
               </div>
             )}
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // 🌐 Khai báo link Backend Render Online tại đây:
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
@@ -7,6 +7,7 @@ function BookingSection({ onBookTable }) {
   // Lấy ngày hôm nay làm mặc định (YYYY-MM-DD)
   const today = new Date().toISOString().split('T')[0];
 
+  const [tables, setTables] = useState([]); // Danh sách bàn từ DB
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
@@ -15,6 +16,7 @@ function BookingSection({ onBookTable }) {
     time: '19:00',
     adults: 2,
     children: 0,
+    tableCode: '', // Mã bàn chọn (VD: B01)
     note: ''
   });
 
@@ -25,6 +27,26 @@ function BookingSection({ onBookTable }) {
     '10:30', '11:00', '11:30', '12:00', '12:30', '13:00',
     '17:30', '18:00', '18:30', '19:00', '19:30', '20:00', '20:30', '21:00'
   ];
+
+  // 🔄 Tải danh sách bàn trống từ Backend khi load trang
+  useEffect(() => {
+    const fetchTables = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/tables`);
+        if (res.ok) {
+          const data = await res.json();
+          setTables(data);
+          // Tự động chọn bàn đầu tiên nếu có
+          if (data && data.length > 0) {
+            setFormData((prev) => ({ ...prev, tableCode: data[0].code || data[0].name }));
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi lấy danh sách bàn:', err);
+      }
+    };
+    fetchTables();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -39,7 +61,6 @@ function BookingSection({ onBookTable }) {
     });
   };
 
-  // ⚡ ĐÃ SỬA: Chuẩn hóa dữ liệu khớp với Schema Backend & gọi API Render
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.fullName.trim() || !formData.phone.trim()) {
@@ -47,27 +68,36 @@ function BookingSection({ onBookTable }) {
       return;
     }
 
+    if (!formData.tableCode) {
+      alert('⚠️ Vui lòng chọn bàn đặt!');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // 🚀 CHUYỂN ĐỔI DỮ LIỆU ĐỂ KHỚP VỚI SCHEMA BACKEND
+      const numAdults = Number(formData.adults);
+      const numChildren = Number(formData.children);
+
+      // 🚀 Payload chuẩn gửi lên Backend
       const payload = {
-        customerName: formData.fullName, // fullName -> customerName
+        customerName: formData.fullName,
         phone: formData.phone,
         email: formData.email,
-        bookingTime: new Date(`${formData.date}T${formData.time}:00`), // Ghép Date & Time -> bookingTime
-        adults: Number(formData.adults),
-        children: Number(formData.children),
-        note: formData.note,
-        tableCode: 'PENDING' // Mã bàn mặc định cho đơn mới chờ xếp
+        bookingTime: new Date(`${formData.date}T${formData.time}:00`),
+        adults: numAdults,
+        children: numChildren,
+        guestCount: numAdults + numChildren, // Gửi cả tổng số khách
+        tableCode: formData.tableCode,        // Mã bàn thực tế (VD: B01, B02)
+        note: formData.note
       };
 
-      const response = await fetch(`${API_URL}/api/bookings`, {
+      const response = await fetch(`${API_URL}/api/reservations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(payload), // Gửi payload đã đổi tên
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json().catch(() => null);
@@ -78,12 +108,12 @@ function BookingSection({ onBookTable }) {
         }
 
         alert(
-          `🎉 Đặt bàn thành công!\n\n• Khách hàng: ${formData.fullName}\n• Thời gian: ${formData.time} - Ngày ${formData.date}\n• Số khách: ${formData.adults} người lớn${
-            formData.children > 0 ? `, ${formData.children} trẻ em` : ''
+          `🎉 Đặt bàn thành công!\n\n• Bàn: ${formData.tableCode}\n• Khách hàng: ${formData.fullName}\n• Thời gian: ${formData.time} - Ngày ${formData.date}\n• Số khách: ${numAdults} người lớn${
+            numChildren > 0 ? `, ${numChildren} trẻ em` : ''
           }`
         );
 
-        // Reset form về mặc định
+        // Reset form
         setFormData({
           fullName: '',
           phone: '',
@@ -92,10 +122,10 @@ function BookingSection({ onBookTable }) {
           time: '19:00',
           adults: 2,
           children: 0,
+          tableCode: tables.length > 0 ? (tables[0].code || tables[0].name) : '',
           note: ''
         });
       } else {
-        // Hiển thị lý do thất bại chi tiết từ Backend
         const errorMessage = data?.message || `Lỗi từ hệ thống (Mã lỗi HTTP ${response.status})`;
         alert(`❌ Đặt bàn thất bại: ${errorMessage}`);
       }
@@ -149,18 +179,27 @@ function BookingSection({ onBookTable }) {
               </div>
             </div>
 
-            {/* HÀNG 2: EMAIL & NGÀY ĐẶT */}
+            {/* HÀNG 2: CHỌN BÀN & NGÀY ĐẶT */}
             <div style={styles.grid2}>
               <div style={styles.fieldGroup}>
-                <label style={styles.label}>Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="email@example.com"
-                  value={formData.email}
+                <label style={styles.label}>Chọn Bàn Đặt *</label>
+                <select
+                  name="tableCode"
+                  value={formData.tableCode}
                   onChange={handleChange}
-                  style={styles.input}
-                />
+                  style={styles.select}
+                  required
+                >
+                  {tables.length > 0 ? (
+                    tables.map((tbl) => (
+                      <option key={tbl._id || tbl.code} value={tbl.code || tbl.name}>
+                        Bàn {tbl.code || tbl.name} ({tbl.capacity || 4} chỗ)
+                      </option>
+                    ))
+                  ) : (
+                    <option value="B01">Bàn B01</option>
+                  )}
+                </select>
               </div>
 
               <div style={styles.fieldGroup}>
@@ -404,7 +443,7 @@ const styles = {
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
-    justify: 'center'
+    justifyContent: 'center'
   },
   stepVal: {
     fontWeight: 'bold',
