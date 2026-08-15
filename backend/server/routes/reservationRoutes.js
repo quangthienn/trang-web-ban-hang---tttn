@@ -1,11 +1,37 @@
 const express = require('express');
 const router = express.Router();
 const Reservation = require('../models/Reservation');
+const Table = require('../models/Table'); // 👈 Bổ sung import Table model
+
+// 🛠️ Hàm phụ: Tự động đổi màu/trạng thái Bàn trong Database
+async function syncTableStatus(reservation, status) {
+  if (!reservation) return;
+
+  const targetCode = reservation.tableCode;
+  const targetTableId = reservation.table;
+
+  let newTableStatus = null;
+  if (status === 'CONFIRMED') newTableStatus = 'RESERVED';  // Duyệt -> Đổi bàn sang RESERVED (Vàng)
+  if (status === 'CANCELLED') newTableStatus = 'AVAILABLE'; // Hủy   -> Trả bàn sang AVAILABLE (Xanh)
+
+  if (newTableStatus) {
+    if (targetTableId) {
+      await Table.findByIdAndUpdate(targetTableId, { status: newTableStatus });
+    } else if (targetCode) {
+      await Table.findOneAndUpdate(
+        { $or: [{ code: targetCode }, { name: targetCode }] },
+        { status: newTableStatus }
+      );
+    }
+  }
+}
 
 // 1️⃣ Lấy danh sách tất cả lịch đặt bàn (Sắp xếp mới nhất lên đầu)
 router.get('/', async (req, res) => {
   try {
-    const list = await Reservation.find().sort({ createdAt: -1 });
+    const list = await Reservation.find()
+      .populate('table')
+      .sort({ createdAt: -1 });
     res.json(list);
   } catch (error) {
     res.status(500).json({ 
@@ -18,7 +44,7 @@ router.get('/', async (req, res) => {
 // 2️⃣ Tạo lịch đặt mới từ Form Khách hàng (Frontend gửi lên)
 router.post('/', async (req, res) => {
   try {
-    const { customerName, phone, bookingTime } = req.body;
+    const { customerName, phone, bookingTime, tableCode, adults, children, guestCount } = req.body;
 
     // Validate các thông tin bắt buộc theo Schema
     if (!customerName || !phone || !bookingTime) {
@@ -27,9 +53,26 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Tạo đơn đặt bàn mới
+    const numAdults = parseInt(adults) || 1;
+    const numChildren = parseInt(children) || 0;
+    const totalGuests = parseInt(guestCount) || (numAdults + numChildren);
+
+    // Tìm id của Bàn dựa trên tableCode (nếu có)
+    let tableId = req.body.table;
+    if (!tableId && tableCode) {
+      const tableObj = await Table.findOne({
+        $or: [{ code: tableCode }, { name: tableCode }]
+      });
+      if (tableObj) tableId = tableObj._id;
+    }
+
+    // Tạo đơn đặt bàn mới với đủ người lớn/trẻ em
     const newBooking = new Reservation({
       ...req.body,
+      adults: numAdults,
+      children: numChildren,
+      guestCount: totalGuests,
+      table: tableId || null,
       status: req.body.status || 'PENDING'
     });
 
@@ -44,17 +87,22 @@ router.post('/', async (req, res) => {
   }
 });
 
-// 3️⃣ Cập nhật trạng thái (ĐÃ SỬA: Bỏ runValidators để tránh bị chặn khi sửa status)
+// 3️⃣ Cập nhật trạng thái (PATCH)
 router.patch('/:id', async (req, res) => {
   try {
     const updated = await Reservation.findByIdAndUpdate(
       req.params.id, 
       req.body, 
-      { new: true, runValidators: false } // 👈 Đã sửa thành false
+      { new: true, runValidators: false }
     );
     
     if (!updated) {
       return res.status(404).json({ message: 'Không tìm thấy đơn đặt bàn này!' });
+    }
+
+    // 🟢 Tự động đồng bộ trạng thái Bàn trong DB
+    if (req.body.status) {
+      await syncTableStatus(updated, req.body.status);
     }
 
     res.json(updated);
@@ -67,7 +115,7 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// 3️⃣b Thêm route PUT (Phòng trường hợp Frontend gửi method PUT)
+// 3️⃣b Route PUT (Phòng trường hợp Frontend gửi method PUT)
 router.put('/:id', async (req, res) => {
   try {
     const updated = await Reservation.findByIdAndUpdate(
@@ -78,6 +126,11 @@ router.put('/:id', async (req, res) => {
     
     if (!updated) {
       return res.status(404).json({ message: 'Không tìm thấy đơn đặt bàn này!' });
+    }
+
+    // 🟢 Tự động đồng bộ trạng thái Bàn trong DB
+    if (req.body.status) {
+      await syncTableStatus(updated, req.body.status);
     }
 
     res.json(updated);

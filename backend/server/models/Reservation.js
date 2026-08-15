@@ -2,15 +2,18 @@ const mongoose = require('mongoose');
 
 const reservationSchema = new mongoose.Schema(
   {
-    customerName: { type: String, required: true }, // Tên khách đặt
-    phone: { type: String, required: true },         // Số điện thoại
-    tableCode: { type: String, required: true },     // Mã bàn đặt (VD: B01, B02)
-    bookingTime: { type: Date, required: true },     // Ngày & Giờ khách tới
-    guestCount: { type: Number, default: 2 },        // Số lượng khách
-    note: { type: String, default: '' },             // Ghi chú (VD: Lấy ghế trẻ em)
+    customerName: { type: String, required: true },
+    phone: { type: String, required: true },
+    tableCode: { type: String, required: true }, // Mã bàn (VD: B01, B02)
+    table: { type: mongoose.Schema.Types.ObjectId, ref: 'Table' }, // Bổ sung link ObjectId tới Table
+    bookingTime: { type: Date, required: true },
+    guestCount: { type: Number, default: 1 },
+    adults: { type: Number, default: 1 },        // Bổ sung số người lớn
+    children: { type: Number, default: 0 },      // Bổ sung số trẻ em
+    note: { type: String, default: '' },
     status: { 
       type: String, 
-      enum: ['PENDING', 'ARRIVED', 'CANCELLED'], 
+      enum: ['PENDING', 'CONFIRMED', 'ARRIVED', 'CANCELLED'], // Đã thêm 'CONFIRMED'
       default: 'PENDING' 
     }
   },
