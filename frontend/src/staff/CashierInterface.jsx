@@ -117,14 +117,14 @@ function CashierInterface() {
     });
   };
 
-  // 5️⃣ Gửi món thêm xuống bếp
+  // 5️⃣ Gửi món thêm xuống bếp (Đã đồng bộ với Backend route /add-items)
   const handleAddItemsToOrder = async () => {
     if (!currentOrder) return;
 
     const itemsToAdd = Object.keys(orderQuantities).map((productId) => {
       const product = menuItems.find((p) => (p._id || p.id) === productId);
       return {
-        productId: productId,
+        menuItemId: productId,
         name: product ? product.name : 'Món ăn',
         price: product ? product.price : 0,
         quantity: orderQuantities[productId]
@@ -138,10 +138,10 @@ function CashierInterface() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/items`, {
+      const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/add-items`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: itemsToAdd })
+        body: JSON.stringify({ newItems: itemsToAdd })
       });
 
       if (res.ok) {

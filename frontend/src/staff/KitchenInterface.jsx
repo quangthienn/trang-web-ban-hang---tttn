@@ -17,6 +17,8 @@ function KitchenInterface() {
         const activeOrders = data.filter(o => ['PENDING', 'COOKING'].includes(o.status));
         
         // Bên trong mỗi order, chỉ lọc lấy các món có cờ isSentToKitchen === false (món mới bổ sung)
+        // Lưu ý: Nếu backend của bạn lưu cờ này là isSentToKitchen hoặc chưa có, bạn có thể kiểm tra thêm. 
+        // Nếu muốn hiển thị tất cả món chưa xong, ta check item.status hoặc item.isSentToKitchen === false.
         const ordersWithUncookedItems = activeOrders.map(order => ({
           ...order,
           items: order.items ? order.items.filter(item => item.isSentToKitchen === false) : []
@@ -38,16 +40,26 @@ function KitchenInterface() {
   // 🍳 Bếp bấm xác nhận nấu xong món (hoặc cập nhật trạng thái)
   const handleMarkAsCooked = async (orderId) => {
     try {
-      // Gọi API cập nhật cờ isSentToKitchen thành true cho các món của đơn này
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/kitchen-done`, {
+      // 1. Thử gọi API chuẩn theo code hiện tại của bạn: /api/orders/{orderId}/kitchen-done
+      let res = await fetch(`${API_URL}/api/orders/${orderId}/kitchen-done`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' }
       });
 
+      // 2. Phòng hờ nếu Backend của bạn dùng route khác, ta dự phòng thêm route chung cập nhật status order/item
+      if (res.status === 404) {
+        res = await fetch(`${API_URL}/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'COOKED' }) // Hoặc cập nhật các món thành đã gửi bếp
+        });
+      }
+
       if (res.ok) {
         fetchOrders();
       } else {
-        alert('❌ Không thể cập nhật trạng thái món cho bếp!');
+        const errData = await res.json().catch(() => ({}));
+        alert(`❌ Không thể cập nhật trạng thái món cho bếp: ${errData.message || 'Lỗi từ server'}`);
       }
     } catch (err) {
       console.error('Lỗi:', err);
@@ -59,13 +71,15 @@ function KitchenInterface() {
   const formatTime = (timeStr) => {
     if (!timeStr) return '--:--';
     const d = new Date(timeStr);
-    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return isNaN(d.getTime()) ? '--:--' : d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   // Tính số phút đã trôi qua kể từ khi order được tạo
   const getElapsedMinutes = (timeStr) => {
     if (!timeStr) return 0;
-    const diffMs = new Date() - new Date(timeStr);
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return 0;
+    const diffMs = new Date() - d;
     return Math.floor(diffMs / 60000);
   };
 
@@ -101,7 +115,7 @@ function KitchenInterface() {
                 <div>
                   {/* TIÊU ĐỀ BÀN & THỜI GIAN GỬI BẾP */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151', paddingBottom: '10px', marginBottom: '12px' }}>
-                    <h3 style={{ margin: 0, color: '#10b981', fontSize: '20px' }}>{order.tableName}</h3>
+                    <h3 style={{ margin: 0, color: '#10b981', fontSize: '20px' }}>{order.tableName || order.tableCode || 'Bàn không tên'}</h3>
                     
                     {/* ⏰ THỜI GIAN GỬI XUỐNG BẾP */}
                     <div style={{ textAlign: 'right' }}>

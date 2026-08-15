@@ -60,7 +60,7 @@ router.post('/:id/create-qr', async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
 
     // Thông tin tài khoản MB Bank
-    const BANK_ID = 'MB';                    
+    const BANK_ID = 'MB';                     
     const ACCOUNT_NO = '0352239768';        
     const ACCOUNT_NAME = 'NGUYEN QUANG THIEN'; 
     const memo = `TT ban ${order.tableName} ${order._id.toString().slice(-4)}`;
@@ -154,7 +154,36 @@ router.post('/:id/add-items', async (req, res) => {
   }
 });
 
-// 6. Cập nhật Order chung (Sửa món/Hủy đơn)
+// ==========================================
+// 6. BẾP XÁC NHẬN HOÀN TẤT MÓN (ĐỔI isSentToKitchen THÀNH true)
+// ==========================================
+router.patch('/:id/kitchen-done', async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    // Cập nhật tất cả các món trong đơn hàng từ isSentToKitchen = false thành true
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { $set: { "items.$[].isSentToKitchen": true } },
+      { new: true }
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
+    }
+
+    res.json({
+      success: true,
+      message: 'Đã cập nhật trạng thái món cho bếp thành công!',
+      order: updatedOrder
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật trạng thái bếp:', error);
+    res.status(500).json({ message: 'Lỗi server khi cập nhật bếp', error: error.message });
+  }
+});
+
+// 7. Cập nhật Order chung (Sửa món/Hủy đơn)
 router.patch('/:id', async (req, res) => {
   try {
     const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });

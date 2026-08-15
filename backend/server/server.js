@@ -21,6 +21,7 @@ mongoose.connect(MONGO_URI)
 
 // Import routes
 const reservationRoutes = require('./routes/reservationRoutes');
+const reportRoutes = require('./routes/reportRoutes'); // 👈 1. Thêm import route mới ở đây
 
 // Routes API
 app.use('/api/menu', require('./routes/menuRoutes'));
@@ -30,6 +31,7 @@ app.use('/api/users', require('./routes/userRoutes'));
 
 app.use('/api/bookings', reservationRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/reports', reportRoutes); // 👈 2. Đăng ký sử dụng route mới ở đây
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server đang chạy tại http://localhost:${PORT}`));
