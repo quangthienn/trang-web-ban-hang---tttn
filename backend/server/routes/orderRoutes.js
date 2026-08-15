@@ -18,11 +18,17 @@ router.post('/', async (req, res) => {
   try {
     const { tableId, tableCode, tableName, items, totalAmount } = req.body;
 
+    // Gán mặc định isSentToKitchen = false cho các món trong đơn hàng mới
+    const formattedItems = items.map(item => ({
+      ...item,
+      isSentToKitchen: false
+    }));
+
     const newOrder = new Order({
       tableId,
       tableCode: tableCode || tableName,
       tableName,
-      items,
+      items: formattedItems,
       totalAmount,
       status: 'PENDING',
       paymentStatus: 'UNPAID'
@@ -54,7 +60,7 @@ router.post('/:id/create-qr', async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
 
     // Thông tin tài khoản MB Bank
-    const BANK_ID = 'MB';                   
+    const BANK_ID = 'MB';                    
     const ACCOUNT_NO = '0352239768';        
     const ACCOUNT_NAME = 'NGUYEN QUANG THIEN'; 
     const memo = `TT ban ${order.tableName} ${order._id.toString().slice(-4)}`;
@@ -111,7 +117,44 @@ router.post('/:id/pay', async (req, res) => {
   }
 });
 
-// 5. Cập nhật Order chung (Sửa món/Hủy đơn)
+// ==========================================
+// 5. GỌI THÊM MÓN (TRÁNH LẶP MÓN CHO BẾP)
+// ==========================================
+router.post('/:id/add-items', async (req, res) => {
+  try {
+    const { newItems } = req.body; 
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy hóa đơn' });
+    }
+
+    // Đánh dấu các món mới thêm có cờ isSentToKitchen = false để nhà bếp biết mà nấu
+    const formattedNewItems = newItems.map(item => ({
+      ...item,
+      isSentToKitchen: false 
+    }));
+
+    // Gộp món mới vào mảng items hiện tại
+    order.items.push(...formattedNewItems);
+
+    // Tính lại tổng tiền hóa đơn
+    order.totalAmount = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    const updatedOrder = await order.save();
+
+    res.json({
+      success: true,
+      message: 'Thêm món thành công!',
+      order: updatedOrder
+    });
+  } catch (error) {
+    console.error('Lỗi thêm món:', error);
+    res.status(500).json({ message: 'Lỗi server khi thêm món', error: error.message });
+  }
+});
+
+// 6. Cập nhật Order chung (Sửa món/Hủy đơn)
 router.patch('/:id', async (req, res) => {
   try {
     const updatedOrder = await Order.findByIdAndUpdate(req.params.id, req.body, { new: true });

@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
 
-// 🌐 Khai báo link Backend Render Online
+// 🌐 Đổi link localhost sang link Render Backend của bạn tại đây:
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 
 function KitchenInterface() {
   const [orders, setOrders] = useState([]);
 
-  // Tải các order chưa thanh toán
+  // Tải các order có chứa món cần bếp chế biến
   const fetchOrders = async () => {
     try {
       const res = await fetch(`${API_URL}/api/orders`);
       if (res.ok) {
         const data = await res.json();
-        // Chỉ lấy những món chưa phục vụ xong hoặc chưa thanh toán
-        setOrders(data.filter(o => ['PENDING', 'COOKING'].includes(o.status)));
+        
+        // Lọc các order chưa hoàn tất thanh toán
+        const activeOrders = data.filter(o => ['PENDING', 'COOKING'].includes(o.status));
+        
+        // Bên trong mỗi order, chỉ lọc lấy các món có cờ isSentToKitchen === false (món mới bổ sung)
+        const ordersWithUncookedItems = activeOrders.map(order => ({
+          ...order,
+          items: order.items ? order.items.filter(item => item.isSentToKitchen === false) : []
+        })).filter(order => order.items.length > 0); // Chỉ giữ lại order nào thực sự có món bếp cần nấu
+
+        setOrders(ordersWithUncookedItems);
       }
     } catch (err) {
       console.error('Lỗi tải dữ liệu Bếp:', err);
@@ -26,17 +35,23 @@ function KitchenInterface() {
     return () => clearInterval(timer);
   }, []);
 
-  // Đổi trạng thái Order (VD: Bắt đầu nấu -> Đã xong)
-  const handleUpdateStatus = async (orderId, newStatus) => {
+  // 🍳 Bếp bấm xác nhận nấu xong món (hoặc cập nhật trạng thái)
+  const handleMarkAsCooked = async (orderId) => {
     try {
-      await fetch(`${API_URL}/api/orders/${orderId}`, {
+      // Gọi API cập nhật cờ isSentToKitchen thành true cho các món của đơn này
+      const res = await fetch(`${API_URL}/api/orders/${orderId}/kitchen-done`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        headers: { 'Content-Type': 'application/json' }
       });
-      fetchOrders();
+
+      if (res.ok) {
+        fetchOrders();
+      } else {
+        alert('❌ Không thể cập nhật trạng thái món cho bếp!');
+      }
     } catch (err) {
-      alert('❌ Lỗi cập nhật trạng thái món!');
+      console.error('Lỗi:', err);
+      alert('❌ Lỗi kết nối đến server!');
     }
   };
 
@@ -47,7 +62,7 @@ function KitchenInterface() {
     return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
-  // Tính số phút đã trôi qua kể từ khi gửi order
+  // Tính số phút đã trôi qua kể từ khi order được tạo
   const getElapsedMinutes = (timeStr) => {
     if (!timeStr) return 0;
     const diffMs = new Date() - new Date(timeStr);
@@ -57,12 +72,12 @@ function KitchenInterface() {
   return (
     <div style={{ padding: '20px', backgroundColor: '#111827', minHeight: '90vh', color: '#fff', fontFamily: 'sans-serif' }}>
       <h2 style={{ margin: '0 0 20px 0', color: '#fbbf24', textAlign: 'center' }}>
-        👨‍🍳 MÀN HÌNH CHẾ BIẾN DÀNH CHO BẾP ({orders.length} ĐƠN)
+        👨‍🍳 MÀN HÌNH CHẾ BIẾN DÀNH CHO BẾP ({orders.length} ĐƠN ĐANG CHỜ)
       </h2>
 
       {orders.length === 0 ? (
         <p style={{ textAlign: 'center', color: '#9ca3af', marginTop: '50px', fontSize: '18px' }}>
-          🎉 Hiện tại không có order nào chờ chế biến!
+          🎉 Hiện tại không có món nào cần chế biến!
         </p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
@@ -91,7 +106,7 @@ function KitchenInterface() {
                     {/* ⏰ THỜI GIAN GỬI XUỐNG BẾP */}
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '13px', fontWeight: 'bold', color: isLate ? '#ef4444' : '#fbbf24' }}>
-                        ⏰ Giờ gửi: {formatTime(order.createdAt)}
+                        ⏰ Giờ gọi: {formatTime(order.createdAt)}
                       </div>
                       <div style={{ fontSize: '11px', color: '#9ca3af' }}>
                         ({elapsedMins} phút trước)
@@ -99,7 +114,7 @@ function KitchenInterface() {
                     </div>
                   </div>
 
-                  {/* DANH SÁCH MÓN BÀN GỌI */}
+                  {/* DANH SÁCH MÓN MỚI CẦN NẤU */}
                   <div style={{ marginBottom: '15px' }}>
                     {order.items?.map((item, idx) => (
                       <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #374151', fontSize: '15px' }}>
@@ -112,23 +127,14 @@ function KitchenInterface() {
                   </div>
                 </div>
 
-                {/* NÚT BẤM CHUYỂN TRẠNG THÁI BẾP */}
+                {/* NÚT BẤM HOÀN TẤT MÓN CHO BẾP */}
                 <div>
-                  {order.status === 'PENDING' ? (
-                    <button
-                      onClick={() => handleUpdateStatus(order._id, 'COOKING')}
-                      style={{ width: '100%', padding: '10px', background: '#f59e0b', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
-                    >
-                      👨‍🍳 Nhận Làm Món
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleUpdateStatus(order._id, 'SERVED')}
-                      style={{ width: '100%', padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
-                    >
-                      ✅ Báo Xong Món (Ra Đồ)
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleMarkAsCooked(order._id)}
+                    style={{ width: '100%', padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}
+                  >
+                    ✅ Báo Xong Món (Ra Đồ)
+                  </button>
                 </div>
 
               </div>

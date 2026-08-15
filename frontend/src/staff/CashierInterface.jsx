@@ -101,7 +101,7 @@ function CashierInterface() {
       });
       const data = await res.json();
       if (data.success) {
-        setQrData(data); // Lưu thông tin qrImageUrl và memo
+        setQrData(data);
       } else {
         alert(`❌ ${data.message || 'Không thể tạo mã QR!'}`);
       }
@@ -113,13 +113,12 @@ function CashierInterface() {
     }
   };
 
-  // 5️⃣ Xử lý Xác nhận Thanh toán hóa đơn (Dùng chung cho cả Cash và Transfer)
+  // 5️⃣ Xử lý Xác nhận Thanh toán hóa đơn
   const handleConfirmPayment = async () => {
     if (!currentOrder) return;
 
     setSubmitting(true);
     try {
-      // Gọi đúng endpoint /pay mới của Backend để tự động nhả bàn về AVAILABLE
       const res = await fetch(`${API_URL}/api/orders/${currentOrder._id}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -173,6 +172,34 @@ function CashierInterface() {
       console.error('Lỗi khi cập nhật đặt bàn:', err);
       alert('❌ Lỗi kết nối máy chủ!');
     }
+  };
+
+  // Hàm tính toán trạng thái thời gian đặt bàn để cảnh báo thu ngân
+  const getBookingAlert = (item) => {
+    if (item.status === 'CANCELLED' || item.status === 'COMPLETED') return null;
+
+    let bookingDateObj = null;
+    if (item.bookingTime) {
+      bookingDateObj = new Date(item.bookingTime);
+    } else if (item.date && item.time) {
+      bookingDateObj = new Date(`${item.date}T${item.time}`);
+    }
+
+    if (!bookingDateObj || isNaN(bookingDateObj.getTime())) return null;
+
+    const now = new Date();
+    const diffMins = Math.floor((bookingDateObj - now) / 60000); // Số phút từ hiện tại đến giờ hẹn
+
+    // Quá giờ hẹn mà chưa xử lý / khách chưa tới
+    if (diffMins < 0 && diffMins >= -60) {
+      return { type: 'OVERDUE', text: `🔴 Đã đến giờ hẹn (${Math.abs(diffMins)} phút trước)!` };
+    }
+    // Sắp tới giờ hẹn trong vòng 30 phút nữa
+    else if (diffMins >= 0 && diffMins <= 30) {
+      return { type: 'SOON', text: `⚡ Sắp tới giờ (${diffMins === 0 ? 'Ngay bây giờ' : `trong ${diffMins} phút nữa`})` };
+    }
+
+    return null;
   };
 
   const renderDateTime = (item) => {
@@ -326,55 +353,66 @@ function CashierInterface() {
                     <th style={{ padding: '12px' }}>Số điện thoại</th>
                     <th style={{ padding: '12px' }}>Ngày & Giờ đặt</th>
                     <th style={{ padding: '12px' }}>Số lượng khách</th>
-                    <th style={{ padding: '12px' }}>Ghi chú</th>
-                    <th style={{ padding: '12px' }}>Trạng thái</th>
+                    <th style={{ padding: '12px' }}>Ghi chú / Trạng thái</th>
                     <th style={{ padding: '12px', textAlign: 'center' }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {bookings.map((item) => (
-                    <tr key={item._id} style={{ borderBottom: '1px solid #374151', fontSize: '14px' }}>
-                      <td style={{ padding: '12px', fontWeight: 'bold' }}>
-                        {item.customerName || item.fullName || 'Khách chưa để lại tên'}
-                      </td>
-                      <td style={{ padding: '12px', color: '#60a5fa' }}>
-                        {item.phone || 'Chưa có SĐT'}
-                      </td>
-                      <td style={{ padding: '12px' }}>{renderDateTime(item)}</td>
-                      <td style={{ padding: '12px' }}>
-                        👥 {item.adults || item.guests || 1} người lớn
-                        {item.children > 0 && `, ${item.children} trẻ em`}
-                      </td>
-                      <td style={{ padding: '12px', color: '#9ca3af', fontStyle: 'italic', maxWidth: '200px' }}>
-                        {item.note || 'Không có'}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        {item.status === 'CONFIRMED' && <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Đã xác nhận</span>}
-                        {item.status === 'CANCELLED' && <span style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ Đã hủy</span>}
-                        {(!item.status || item.status === 'PENDING') && <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⏳ Mới / Chờ duyệt</span>}
-                      </td>
-                      <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                          {item.status !== 'CONFIRMED' && (
-                            <button
-                              onClick={() => handleUpdateBookingStatus(item._id, 'CONFIRMED')}
-                              style={{ padding: '6px 10px', background: '#10b981', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
-                            >
-                              Xác nhận
-                            </button>
+                  {bookings.map((item) => {
+                    const alertInfo = getBookingAlert(item);
+                    return (
+                      <tr key={item._id} style={{ borderBottom: '1px solid #374151', fontSize: '14px', background: alertInfo ? 'rgba(239, 68, 68, 0.1)' : 'transparent' }}>
+                        <td style={{ padding: '12px', fontWeight: 'bold' }}>
+                          {item.customerName || item.fullName || 'Khách chưa để lại tên'}
+                        </td>
+                        <td style={{ padding: '12px', color: '#60a5fa' }}>
+                          {item.phone || 'Chưa có SĐT'}
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          {renderDateTime(item)}
+                          {alertInfo && (
+                            <div style={{ marginTop: '5px', fontSize: '11px', fontWeight: 'bold', color: alertInfo.type === 'OVERDUE' ? '#ef4444' : '#f59e0b', background: '#111827', padding: '3px 6px', borderRadius: '4px', display: 'inline-block' }}>
+                              {alertInfo.text}
+                            </div>
                           )}
-                          {item.status !== 'CANCELLED' && (
-                            <button
-                              onClick={() => handleUpdateBookingStatus(item._id, 'CANCELLED')}
-                              style={{ padding: '6px 10px', background: '#ef4444', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
-                            >
-                              Hủy
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          👥 {item.adults || item.guests || 1} người lớn
+                          {item.children > 0 && `, ${item.children} trẻ em`}
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          <div style={{ color: '#9ca3af', fontStyle: 'italic', maxWidth: '200px', marginBottom: '5px' }}>
+                            {item.note || 'Không có ghi chú'}
+                          </div>
+                          <div>
+                            {item.status === 'CONFIRMED' && <span style={{ color: '#10b981', fontWeight: 'bold' }}>✅ Đã xác nhận</span>}
+                            {item.status === 'CANCELLED' && <span style={{ color: '#ef4444', fontWeight: 'bold' }}>❌ Đã hủy</span>}
+                            {(!item.status || item.status === 'PENDING') && <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>⏳ Mới / Chờ duyệt</span>}
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                            {item.status !== 'CONFIRMED' && (
+                              <button
+                                onClick={() => handleUpdateBookingStatus(item._id, 'CONFIRMED')}
+                                style={{ padding: '6px 10px', background: '#10b981', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                              >
+                                Xác nhận
+                              </button>
+                            )}
+                            {item.status !== 'CANCELLED' && (
+                              <button
+                                onClick={() => handleUpdateBookingStatus(item._id, 'CANCELLED')}
+                                style={{ padding: '6px 10px', background: '#ef4444', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                              >
+                                Hủy
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -382,7 +420,7 @@ function CashierInterface() {
         </div>
       )}
 
-      {/* ==================== POPUP HÓA ĐƠN THANH TOÁN (KHI CHỌN BÀN) ==================== */}
+      {/* ==================== POPUP HÓA ĐƠN THANH TOÁN ==================== */}
       {selectedTable && (
         <div
           style={{
@@ -487,7 +525,6 @@ function CashierInterface() {
                   <span>{currentOrder.totalAmount?.toLocaleString('vi-VN')}đ</span>
                 </div>
 
-                {/* CHỌN HÌNH THỨC THANH TOÁN */}
                 <div style={{ marginBottom: '15px' }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: '#d1d5db' }}>
                     Hình thức thanh toán:
@@ -529,7 +566,6 @@ function CashierInterface() {
                   </div>
                 </div>
 
-                {/* KHU VỰC HIỂN THỊ MÃ QR NẾU CHỌN CHUYỂN KHOẢN */}
                 {paymentMethod === 'TRANSFER' && (
                   <div style={{ textAlign: 'center', background: '#111827', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
                     {loadingQr ? (

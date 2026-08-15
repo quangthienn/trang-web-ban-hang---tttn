@@ -14,7 +14,12 @@ const orderSchema = new mongoose.Schema(
         menuItemId: String,
         name: String,
         price: Number,
-        quantity: Number
+        quantity: Number,
+        // --- BỔ SUNG CỜ ĐÁNH DẤU MÓN ĐÃ GỬI BẾP HAY CHƯA ---
+        isSentToKitchen: { 
+          type: Boolean, 
+          default: false 
+        }
       }
     ],
     totalAmount: { type: Number, required: true },
@@ -26,7 +31,7 @@ const orderSchema = new mongoose.Schema(
       default: 'PENDING'
     },
 
-    // --- BỔ SUNG QUẢN LÝ THANH TOÁN ---
+    // --- QUẢN LÝ THANH TOÁN ---
     paymentStatus: {
       type: String,
       enum: ['UNPAID', 'PAID'],

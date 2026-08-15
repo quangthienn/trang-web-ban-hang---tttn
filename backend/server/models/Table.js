@@ -6,8 +6,14 @@ const tableSchema = new mongoose.Schema(
     code: { type: String },
     status: {
       type: String,
-      enum: ['AVAILABLE', 'OCCUPIED'],
+      enum: ['AVAILABLE', 'RESERVED', 'OCCUPIED'], // Thêm trạng thái RESERVED (giữ bàn)
       default: 'AVAILABLE'
+    },
+    // --- BỔ SUNG THÔNG TIN ĐẶT BÀN ---
+    reservationDetails: {
+      customerName: { type: String, default: '' },
+      customerPhone: { type: String, default: '' },
+      reservationTime: { type: Date, default: null } // Thời gian khách hẹn đến
     }
   },
   { timestamps: true }

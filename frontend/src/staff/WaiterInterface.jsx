@@ -89,7 +89,7 @@ function WaiterInterface() {
 
   const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // 🚀 GỬI ORDER VÀ LƯU VÀO DATABASE
+  // 🚀 GỬI ORDER HOẶC THÊM MÓN VÀO DATABASE (ĐÃ FIX KHÔNG LẶP MÓN CHO BẾP)
   const handleSubmitOrder = async () => {
     if (cart.length === 0) {
       alert('⚠️ Vui lòng chọn ít nhất 1 món!');
@@ -99,35 +99,56 @@ function WaiterInterface() {
     setLoading(true);
 
     try {
-      // 1. Lưu Order & Đổi Bàn ở Backend
-      const orderData = {
-        tableId: selectedTable._id, // 👈 TRUYỀN TRỰC TIẾP ID BÀN
-        tableCode: selectedTable.code || selectedTable.name,
-        tableName: selectedTable.name,
-        items: cart,
-        totalAmount,
-        status: 'PENDING'
-      };
+      // Kiểm tra xem bàn này đã có đơn hàng nào chưa thanh toán trước đó chưa
+      const existingOrder = orders.find(
+        o => (o.tableCode === selectedTable.code || o.tableName === selectedTable.name) && o.status !== 'PAID'
+      );
 
-      const res = await fetch(`${API_URL}/api/orders`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderData)
-      });
+      if (existingOrder) {
+        // TRƯỜNG HỢP 1: BÀN ĐÃ CÓ ORDER -> GỌI API THÊM MÓN (/add-items)
+        const res = await fetch(`${API_URL}/api/orders/${existingOrder._id}/add-items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newItems: cart })
+        });
 
-      // 2. Ép cập nhật trạng thái Bàn qua API Bàn
-      await fetch(`${API_URL}/api/tables/${selectedTable._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'OCCUPIED' })
-      });
+        if (res.ok) {
+          alert(`🎉 Đã gọi thêm món thành công cho ${selectedTable.name}!`);
+          setSelectedTable(null);
+          await fetchData();
+        }
+      } else {
+        // TRƯỜNG HỢP 2: BÀN TRỐNG -> TẠO ORDER MỚI
+        const orderData = {
+          tableId: selectedTable._id,
+          tableCode: selectedTable.code || selectedTable.name,
+          tableName: selectedTable.name,
+          items: cart,
+          totalAmount,
+          status: 'PENDING'
+        };
 
-      if (res.ok) {
-        alert(`🎉 Đã lưu Order thành công! ${selectedTable.name} đã khóa màu ĐỎ.`);
-        setSelectedTable(null);
-        await fetchData(); // Tải lại dữ liệu chuẩn từ Database
+        const res = await fetch(`${API_URL}/api/orders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData)
+        });
+
+        // Ép cập nhật trạng thái Bàn sang OCCUPIED
+        await fetch(`${API_URL}/api/tables/${selectedTable._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'OCCUPIED' })
+        });
+
+        if (res.ok) {
+          alert(`🎉 Đã tạo Order thành công! ${selectedTable.name} chuyển sang Đang có khách.`);
+          setSelectedTable(null);
+          await fetchData();
+        }
       }
     } catch (err) {
+      console.error('Lỗi:', err);
       alert('❌ Lỗi khi gửi Order!');
     } finally {
       setLoading(false);
