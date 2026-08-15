@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 
+// 🏦 CẤU HÌNH TÀI KHOẢN NGÂN HÀNG VIETQR (Bạn có thể đổi sang TK ngân hàng của quán)
+const BANK_CONFIG = {
+  bankId: 'MB',          // Mã ngân hàng (VD: MB, VCB, ICB, ACB, VPB, TCB, STB...)
+  accountNo: '0388888888', // Số tài khoản ngân hàng
+  accountName: 'NHA HANG PHUC VU' // Tên chủ tài khoản (Viết hoa không dấu)
+};
+
 function CashierInterface() {
   const [activeTab, setActiveTab] = useState('TABLES'); // 'TABLES' | 'BOOKINGS'
 
@@ -19,12 +26,12 @@ function CashierInterface() {
   // State Order thêm món
   const [orderQuantities, setOrderQuantities] = useState({});
 
-  // State Thanh toán
-  const [paymentMethod, setPaymentMethod] = useState('CASH'); // 'CASH' | 'TRANSFER' | 'CARD'
+  // State Thanh toán ('CASH' | 'VIETQR')
+  const [paymentMethod, setPaymentMethod] = useState('CASH'); 
   const [cashReceived, setCashReceived] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
-  // 1️⃣ Tải dữ liệu từ Backend (Có bọc an toàn tránh crash)
+  // 1️⃣ Tải dữ liệu từ Backend
   const fetchData = async () => {
     try {
       const [resTables, resMenu, resBookings, resOrders] = await Promise.all([
@@ -155,7 +162,7 @@ function CashierInterface() {
     }
   };
 
-  // 5️⃣ THANH TOÁN & GIẢI PHÓNG BÀN (TÍNH NĂNG CHÍNH CỦA THU NGÂN)
+  // 5️⃣ THANH TOÁN & GIẢI PHÓNG BÀN
   const handleCheckout = async () => {
     if (!currentOrder) return;
 
@@ -167,7 +174,8 @@ function CashierInterface() {
       return;
     }
 
-    if (!window.confirm(`Xác nhận thanh toán ${total.toLocaleString('vi-VN')}đ cho ${selectedTable.name}?`)) {
+    const methodText = paymentMethod === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản VietQR';
+    if (!window.confirm(`Xác nhận thanh toán ${total.toLocaleString('vi-VN')}đ (${methodText}) cho ${selectedTable.name}?`)) {
       return;
     }
 
@@ -196,7 +204,7 @@ function CashierInterface() {
         body: JSON.stringify({ status: 'AVAILABLE' })
       });
 
-      alert(`🎉 Thanh toán thành công! Bàn ${selectedTable.name} đã trống.`);
+      alert(`🎉 Thanh toán thành công! Bàn ${selectedTable.name} đã được giải phóng.`);
       setSelectedTable(null);
       setCurrentOrder(null);
       await fetchData();
@@ -240,6 +248,10 @@ function CashierInterface() {
   const totalAmount = currentOrder?.totalAmount || 0;
   const changeAmount = paymentMethod === 'CASH' ? (parseFloat(cashReceived) || 0) - totalAmount : 0;
 
+  // URL Tạo mã VietQR động theo số tiền & tên bàn
+  const qrNote = encodeURIComponent(`Thanh toan ${selectedTable?.name || ''}`);
+  const vietQrUrl = `https://img.vietqr.io/image/${BANK_CONFIG.bankId}-${BANK_CONFIG.accountNo}-compact2.png?amount=${totalAmount}&addInfo=${qrNote}&accountName=${encodeURIComponent(BANK_CONFIG.accountName)}`;
+
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif', color: '#fff', backgroundColor: '#111827', minHeight: '90vh' }}>
       
@@ -248,7 +260,7 @@ function CashierInterface() {
         <div>
           <h2 style={{ color: '#fbbf24', margin: 0 }}>💵 MÀN HÌNH THU NGÂN & THANH TOÁN</h2>
           <p style={{ color: '#9ca3af', fontSize: '14px', margin: '5px 0 0 0' }}>
-            Quản lý tính tiền, in hóa đơn, gọi thêm món và duyệt đơn đặt bàn.
+            Tính tiền, quét mã VietQR, gọi thêm món và quản lý đặt bàn.
           </p>
         </div>
 
@@ -388,10 +400,10 @@ function CashierInterface() {
         </div>
       )}
 
-      {/* POPUP XỬ LÝ THANH TOÁN & GỌI MÓN THÊM */}
+      {/* POPUP THANH TOÁN & GỌI MÓN THÊM */}
       {selectedTable && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div style={{ background: '#1f2937', width: '1000px', maxWidth: '95vw', height: '88vh', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          <div style={{ background: '#1f2937', width: '1050px', maxWidth: '95vw', height: '90vh', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             
             <button onClick={() => setSelectedTable(null)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'transparent', border: 'none', color: '#ef4444', fontSize: '24px', cursor: 'pointer' }}>✕</button>
 
@@ -406,7 +418,7 @@ function CashierInterface() {
                 <p style={{ color: '#9ca3af' }}>Bàn này hiện chưa có hóa đơn chưa thanh toán.</p>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '15px', flex: 1, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.1fr', gap: '15px', flex: 1, overflow: 'hidden' }}>
                 
                 {/* CỘT 1: CHI TIẾT HÓA ĐƠN HIỆN TẠI */}
                 <div style={{ background: '#111827', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column' }}>
@@ -452,47 +464,81 @@ function CashierInterface() {
                   </button>
                 </div>
 
-                {/* CỘT 3: KHU VỰC THÁNH TOÁN */}
+                {/* CỘT 3: HÌNH THỨC THANH TOÁN (TIỀN MẶT / VIETQR) */}
                 <div style={{ background: '#111827', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <div>
-                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>💰 Hình thức thanh toán</h4>
+                    <h4 style={{ color: '#ef4444', marginTop: 0 }}>💰 Phương thức thanh toán</h4>
                     
-                    {/* Chọn phương thức */}
+                    {/* Switch Tiền Mặt / Chuyển Khoản VietQR */}
                     <div style={{ display: 'flex', gap: '6px', marginBottom: '15px' }}>
-                      {['CASH', 'TRANSFER', 'CARD'].map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => setPaymentMethod(m)}
-                          style={{
-                            flex: 1,
-                            padding: '8px 4px',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            background: paymentMethod === m ? '#10b981' : '#374151',
-                            color: '#fff'
-                          }}
-                        >
-                          {m === 'CASH' ? 'Tiền mặt' : m === 'TRANSFER' ? 'Chuyển khoản' : 'Thẻ'}
-                        </button>
-                      ))}
+                      <button
+                        onClick={() => setPaymentMethod('CASH')}
+                        style={{
+                          flex: 1,
+                          padding: '10px 4px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          background: paymentMethod === 'CASH' ? '#10b981' : '#374151',
+                          color: '#fff'
+                        }}
+                      >
+                        💵 Tiền mặt
+                      </button>
+
+                      <button
+                        onClick={() => setPaymentMethod('VIETQR')}
+                        style={{
+                          flex: 1,
+                          padding: '10px 4px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                          background: paymentMethod === 'VIETQR' ? '#3b82f6' : '#374151',
+                          color: '#fff'
+                        }}
+                      >
+                        📲 Chuyển khoản VietQR
+                      </button>
                     </div>
 
-                    {/* Ô nhập tiền mặt & tính tiền thừa */}
+                    {/* HIỂN THỊ TIỀN MẶT */}
                     {paymentMethod === 'CASH' && (
-                      <div>
+                      <div style={{ background: '#1f2937', padding: '10px', borderRadius: '6px' }}>
                         <label style={{ fontSize: '12px', color: '#9ca3af' }}>Tiền khách đưa (VNĐ):</label>
                         <input
                           type="number"
                           value={cashReceived}
                           onChange={(e) => setCashReceived(e.target.value)}
                           placeholder="Nhập số tiền..."
-                          style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #374151', background: '#1f2937', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
+                          style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #374151', background: '#111827', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }}
                         />
                         <div style={{ marginTop: '10px', fontSize: '13px', color: changeAmount >= 0 ? '#10b981' : '#ef4444', fontWeight: 'bold' }}>
-                          Tiền thừa: {changeAmount >= 0 ? `${changeAmount.toLocaleString('vi-VN')}đ` : 'Chưa đủ tiền!'}
+                          Tiền thừa trả khách: {changeAmount >= 0 ? `${changeAmount.toLocaleString('vi-VN')}đ` : 'Chưa đủ tiền!'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HIỂN THỊ MÃ VIETQR ĐỘNG */}
+                    {paymentMethod === 'VIETQR' && (
+                      <div style={{ background: '#fff', color: '#000', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#2563eb', marginBottom: '4px' }}>
+                          MÃ CHUYỂN KHOẢN VIETQR AUTO
+                        </div>
+                        <img
+                          src={vietQrUrl}
+                          alt="VietQR Payment Code"
+                          style={{ width: '180px', height: '180px', objectFit: 'contain', margin: '0 auto', display: 'block', borderRadius: '6px' }}
+                        />
+                        <div style={{ fontSize: '11px', marginTop: '6px', color: '#374151' }}>
+                          Số tiền: <strong>{totalAmount.toLocaleString('vi-VN')}đ</strong>
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#6b7280' }}>
+                          STK: {BANK_CONFIG.accountNo} ({BANK_CONFIG.bankId})
                         </div>
                       </div>
                     )}
@@ -508,13 +554,13 @@ function CashierInterface() {
                       color: '#fff',
                       border: 'none',
                       borderRadius: '6px',
-                      fontSize: '16px',
+                      fontSize: '15px',
                       fontWeight: 'bold',
                       cursor: 'pointer',
-                      marginTop: '15px'
+                      marginTop: '12px'
                     }}
                   >
-                    {isProcessingPayment ? '⏳ Đang xử lý...' : '✅ XÁC NHẬN THANH TOÁN'}
+                    {isProcessingPayment ? '⏳ Đang xác nhận...' : '✅ XÁC NHẬN ĐÃ THU TIỀN'}
                   </button>
                 </div>
 
