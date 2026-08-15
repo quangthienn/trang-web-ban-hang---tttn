@@ -1,173 +1,185 @@
 import React, { useState, useEffect } from 'react';
 
-// 🌐 Khai báo link Backend Render Online
 const API_URL = 'https://trang-web-ban-hang-tttn.onrender.com';
 
 function WaiterInterface() {
   const [tables, setTables] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
-  
+
   const [selectedTable, setSelectedTable] = useState(null);
-  const [cart, setCart] = useState([]); 
+  const [existingOrder, setExistingOrder] = useState(null); // Món cũ đã gọi
+  const [newCart, setNewCart] = useState([]); // Món MỚI chọn ở lượt này
   const [loading, setLoading] = useState(false);
 
-  // Tải dữ liệu từ Backend
+  // 1️⃣ Tải dữ liệu từ Backend (Có bọc phòng thủ tránh crash .map)
   const fetchData = async () => {
     try {
       const [resTables, resMenu, resOrders] = await Promise.all([
-        fetch(`${API_URL}/api/tables`).then(r => r.json()),
-        fetch(`${API_URL}/api/menu`).then(r => r.json()),
-        fetch(`${API_URL}/api/orders`).then(r => r.json())
+        fetch(`${API_URL}/api/tables`).then((r) => r.json()).catch(() => []),
+        fetch(`${API_URL}/api/products`).then((r) => r.json()).catch(async () => {
+          return fetch(`${API_URL}/api/menu`).then((r) => r.json()).catch(() => []);
+        }),
+        fetch(`${API_URL}/api/orders`).then((r) => r.json()).catch(() => [])
       ]);
 
-      setTables(resTables);
-      setMenuItems(resMenu);
-      setOrders(resOrders.filter(o => o.status !== 'PAID' && o.status !== 'CANCELLED'));
+      const safeTables = Array.isArray(resTables) ? resTables : resTables.tables || resTables.data || [];
+      const safeMenu = Array.isArray(resMenu) ? resMenu : resMenu.products || resMenu.menu || resMenu.data || [];
+      const safeOrders = Array.isArray(resOrders) ? resOrders : resOrders.orders || resOrders.data || [];
+
+      setTables(safeTables);
+      setMenuItems(safeMenu);
+      setOrders(safeOrders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED'));
     } catch (err) {
-      console.error('Lỗi tải dữ liệu:', err);
+      console.error('❌ Lỗi tải dữ liệu:', err);
     }
   };
 
   useEffect(() => {
     fetchData();
-    const timer = setInterval(fetchData, 3000); 
+    const timer = setInterval(fetchData, 4000);
     return () => clearInterval(timer);
   }, []);
 
-  // Kiểm tra bàn đang có khách hay trống (Đỏ nếu status = OCCUPIED HOẶC đang có Order chưa thanh toán)
+  // Kiểm tra bàn đang có khách hay trống
   const checkIsOccupied = (table) => {
+    if (!table) return false;
     const hasActiveOrder = orders.some(
-      o => (o.tableCode === table.code || o.tableName === table.name) && o.status !== 'PAID'
+      (o) => (o.tableCode === table.code || o.tableName === table.name) && o.status !== 'PAID'
     );
     return table.status === 'OCCUPIED' || hasActiveOrder;
   };
 
-  const totalTables = tables.length;
-  const occupiedCount = tables.filter(t => checkIsOccupied(t)).length;
-  const availableCount = totalTables - occupiedCount;
-
-  // Mở Popup chọn món
+  // 2️⃣ Mở Popup chọn món cho bàn
   const handleSelectTable = (table) => {
     setSelectedTable(table);
-    const existingOrder = orders.find(
-      o => (o.tableCode === table.code || o.tableName === table.name) && o.status !== 'PAID'
+    setNewCart([]); // Reset giỏ món MỚI
+
+    // Tìm order hiện tại của bàn này (nếu có)
+    const currentActiveOrder = orders.find(
+      (o) => (o.tableCode === table.code || o.tableName === table.name) && o.status !== 'PAID'
     );
-    if (existingOrder) {
-      setCart(existingOrder.items || []);
-    } else {
-      setCart([]); 
-    }
+    setExistingOrder(currentActiveOrder || null);
   };
 
-  // Thêm món vào giỏ
-  const handleAddToCart = (item) => {
-    setCart(prev => {
-      const exist = prev.find(i => i.menuItemId === item._id || i.name === item.name);
+  // 3️⃣ Thêm món MỚI vào giỏ
+  const handleAddToCart = (product) => {
+    const prodId = product._id || product.id;
+    setNewCart((prev) => {
+      const exist = prev.find((i) => i.menuItemId === prodId);
       if (exist) {
-        return prev.map(i =>
-          (i.menuItemId === item._id || i.name === item.name)
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
+        return prev.map((i) =>
+          i.menuItemId === prodId ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-      return [...prev, { menuItemId: item._id, name: item.name, price: item.price, quantity: 1 }];
+      return [
+        ...prev,
+        {
+          menuItemId: prodId,
+          name: product.name,
+          price: product.price || 0,
+          quantity: 1
+        }
+      ];
     });
   };
 
-  // Tăng/Giảm số lượng
-  const handleUpdateQty = (idx, delta) => {
-    setCart(prev => {
-      const updated = [...prev];
-      updated[idx].quantity += delta;
-      if (updated[idx].quantity <= 0) {
-        updated.splice(idx, 1);
-      }
-      return updated;
+  // Tăng/Giảm số lượng món MỚI
+  const handleUpdateQty = (prodId, delta) => {
+    setNewCart((prev) => {
+      return prev
+        .map((item) => {
+          if (item.menuItemId === prodId) {
+            const newQty = item.quantity + delta;
+            return newQty > 0 ? { ...item, quantity: newQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean);
     });
   };
 
-  const totalAmount = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const newCartTotal = newCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  // 🚀 GỬI ORDER HOẶC THÊM MÓN VÀO DATABASE (ĐÃ FIX KHÔNG LẶP MÓN CHO BẾP)
+  // 4️⃣ GỬI ORDER XUỐNG BẾP (Fix triệt để lỗi trùng lặp món cũ)
   const handleSubmitOrder = async () => {
-    if (cart.length === 0) {
-      alert('⚠️ Vui lòng chọn ít nhất 1 món!');
+    if (newCart.length === 0) {
+      alert('⚠️ Vui lòng chọn ít nhất 1 món mới trước khi gửi!');
       return;
     }
 
     setLoading(true);
 
     try {
-      // Kiểm tra xem bàn này đã có đơn hàng nào chưa thanh toán trước đó chưa
-      const existingOrder = orders.find(
-        o => (o.tableCode === selectedTable.code || o.tableName === selectedTable.name) && o.status !== 'PAID'
-      );
-
       if (existingOrder) {
-        // TRƯỜNG HỢP 1: BÀN ĐÃ CÓ ORDER -> GỌI API THÊM MÓN (/add-items)
+        // TRƯỜNG HỢP 1: BÀN ĐÃ CÓ KHÁCH -> Chỉ gửi các món MỚI chọn
         const res = await fetch(`${API_URL}/api/orders/${existingOrder._id}/add-items`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ newItems: cart })
+          body: JSON.stringify({ newItems: newCart })
         });
 
         if (res.ok) {
-          alert(`🎉 Đã gọi thêm món thành công cho ${selectedTable.name}!`);
+          alert(`🎉 Đã gửi gọi THÊM món thành công cho ${selectedTable.name}!`);
           setSelectedTable(null);
           await fetchData();
+        } else {
+          alert('❌ Lỗi khi gửi thêm món!');
         }
       } else {
-        // TRƯỜNG HỢP 2: BÀN TRỐNG -> TẠO ORDER MỚI
+        // TRƯỜNG HỢP 2: BÀN TRỐNG -> Tạo Order MỚI & Đổi Bàn sang OCCUPIED
         const orderData = {
           tableId: selectedTable._id,
           tableCode: selectedTable.code || selectedTable.name,
           tableName: selectedTable.name,
-          items: cart,
-          totalAmount,
+          items: newCart,
+          totalAmount: newCartTotal,
           status: 'PENDING'
         };
 
-        const res = await fetch(`${API_URL}/api/orders`, {
+        const resOrder = await fetch(`${API_URL}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderData)
         });
 
-        // Ép cập nhật trạng thái Bàn sang OCCUPIED
-        await fetch(`${API_URL}/api/tables/${selectedTable._id}`, {
+        const tableId = selectedTable._id || selectedTable.id;
+        await fetch(`${API_URL}/api/tables/${tableId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'OCCUPIED' })
         });
 
-        if (res.ok) {
-          alert(`🎉 Đã tạo Order thành công! ${selectedTable.name} chuyển sang Đang có khách.`);
+        if (resOrder.ok) {
+          alert(`🎉 Đã mở bàn & gửi Order cho ${selectedTable.name}!`);
           setSelectedTable(null);
           await fetchData();
+        } else {
+          alert('❌ Lỗi tạo đơn hàng mới!');
         }
       }
     } catch (err) {
-      console.error('Lỗi:', err);
-      alert('❌ Lỗi khi gửi Order!');
+      console.error('Lỗi gửi order:', err);
+      alert('❌ Lỗi kết nối khi gửi order!');
     } finally {
       setLoading(false);
     }
   };
 
-  // 🚪 TRẢ BÀN
+  // 5️⃣ TRẢ BÀN TRỐNG
   const handleReleaseTable = async () => {
-    if (!window.confirm(`Xác nhận trả ${selectedTable.name} về BÀN TRỐNG?`)) return;
+    if (!window.confirm(`Xác nhận giải phóng ${selectedTable.name} về BÀN TRỐNG?`)) return;
 
     setLoading(true);
     try {
-      await fetch(`${API_URL}/api/tables/${selectedTable._id}`, {
+      const tableId = selectedTable._id || selectedTable.id;
+      await fetch(`${API_URL}/api/tables/${tableId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'AVAILABLE' })
       });
 
-      alert('🟢 Bàn đã được trả về BÀN TRỐNG!');
+      alert('🟢 Bàn đã chuyển về BÀN TRỐNG!');
       setSelectedTable(null);
       await fetchData();
     } catch (err) {
@@ -177,34 +189,31 @@ function WaiterInterface() {
     }
   };
 
+  const safeTables = Array.isArray(tables) ? tables : [];
+  const safeMenu = Array.isArray(menuItems) ? menuItems : [];
+  const totalTables = safeTables.length;
+  const occupiedCount = safeTables.filter((t) => checkIsOccupied(t)).length;
+  const availableCount = totalTables - occupiedCount;
+
   return (
     <div style={{ padding: '20px', backgroundColor: '#111827', minHeight: '90vh', color: '#fff', fontFamily: 'sans-serif' }}>
-      
       {/* BANNER THỐNG KÊ */}
       <div style={{ background: '#1f2937', padding: '16px 20px', borderRadius: '12px', marginBottom: '20px' }}>
-        <h2 style={{ margin: '0 0 10px 0', color: '#fbbf24' }}>🛎️ Sơ Đồ Bàn / Quản Lý Order</h2>
-        
+        <h2 style={{ margin: '0 0 10px 0', color: '#38bdf8' }}>🛎️ MÀN HÌNH PHỤC VỤ (ORDER MÓN)</h2>
         <div style={{ display: 'flex', gap: '20px', fontSize: '15px', fontWeight: 'bold' }}>
           <span style={{ color: '#9ca3af' }}>📊 Tổng số: {totalTables} bàn</span>
           <span style={{ color: '#10b981' }}>🟢 Bàn trống: {availableCount}</span>
           <span style={{ color: '#ef4444' }}>🔴 Đang có khách: {occupiedCount}</span>
         </div>
-
-        {availableCount <= 2 && availableCount > 0 && (
-          <div style={{ marginTop: '12px', background: '#f59e0b', color: '#000', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold' }}>
-            ⚠️ CHÚ Ý: Nhà hàng chỉ còn {availableCount} bàn trống!
-          </div>
-        )}
       </div>
 
       {/* DANH SÁCH BÀN */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-        {tables.map((table) => {
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '16px' }}>
+        {safeTables.map((table) => {
           const isOccupied = checkIsOccupied(table);
-
           return (
             <div
-              key={table._id}
+              key={table._id || table.code || Math.random()}
               onClick={() => handleSelectTable(table)}
               style={{
                 background: isOccupied ? '#7f1d1d' : '#064e3b',
@@ -216,7 +225,7 @@ function WaiterInterface() {
                 boxShadow: '0 4px 6px rgba(0,0,0,0.3)'
               }}
             >
-              <h3 style={{ margin: '0 0 8px 0', fontSize: '18px' }}>{table.name}</h3>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '18px' }}>{table.name || table.code}</h3>
               <span
                 style={{
                   display: 'inline-block',
@@ -229,7 +238,7 @@ function WaiterInterface() {
                   marginBottom: '10px'
                 }}
               >
-                {isOccupied ? '🔴 ĐANG CÓ KHÁCH' : '🟢 BÀN TRỐNG'}
+                {isOccupied ? '🔴 CÓ KHÁCH' : '🟢 BÀN TRỐNG'}
               </span>
 
               <button
@@ -241,77 +250,101 @@ function WaiterInterface() {
                   fontWeight: 'bold',
                   fontSize: '13px',
                   cursor: 'pointer',
-                  backgroundColor: isOccupied ? '#ef4444' : '#f59e0b',
+                  backgroundColor: isOccupied ? '#ef4444' : '#3b82f6',
                   color: '#fff'
                 }}
               >
-                {isOccupied ? '✏️ Xem / Sửa Order' : '📝 TÍCH CHỌN MÓN'}
+                {isOccupied ? '➕ Gọi Thêm Món' : '📝 Mở Bàn Gọi Món'}
               </button>
             </div>
           );
         })}
       </div>
 
-      {/* POPUP CHỌN MÓN */}
+      {/* POPUP CHỌN MÓN GỬI BẾP */}
       {selectedTable && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#1f2937', width: '90%', maxWidth: '900px', height: '80vh', borderRadius: '12px', display: 'grid', gridTemplateColumns: '1.5fr 1fr', overflow: 'hidden' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#1f2937', width: '92%', maxWidth: '1000px', height: '85vh', borderRadius: '12px', display: 'grid', gridTemplateColumns: '1.2fr 1fr', overflow: 'hidden' }}>
             
-            {/* CỘT MENU */}
+            {/* CỘT TRAI: DANH SÁCH MENU MÓN */}
             <div style={{ padding: '20px', overflowY: 'auto', borderRight: '1px solid #374151' }}>
-              <h3 style={{ marginTop: 0, color: '#fbbf24' }}>🍽️ Danh Sách Món Ăn</h3>
+              <h3 style={{ marginTop: 0, color: '#fbbf24' }}>🍽️ Danh Sách Thực Đơn</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '12px' }}>
-                {menuItems.map((item) => (
+                {safeMenu.map((item) => (
                   <div
-                    key={item._id}
+                    key={item._id || item.id || Math.random()}
                     onClick={() => handleAddToCart(item)}
                     style={{ background: '#374151', padding: '12px', borderRadius: '8px', cursor: 'pointer', textAlign: 'center', border: '1px solid #4b5563' }}
                   >
                     <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '14px' }}>{item.name}</div>
-                    <div style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px' }}>{item.price?.toLocaleString()}đ</div>
+                    <div style={{ color: '#10b981', fontWeight: 'bold', fontSize: '13px' }}>{(item.price || 0).toLocaleString('vi-VN')}đ</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* CỘT GIỎ HÀNG */}
+            {/* CỘT PHẢI: CHI TIẾT ĐƠN HÀNG */}
             <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: '#111827' }}>
-              <div>
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                
+                {/* TIÊU ĐỀ POPUP */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #374151', paddingBottom: '10px' }}>
-                  <h3 style={{ margin: 0, color: '#10b981' }}>📌 Order: {selectedTable.name}</h3>
+                  <h3 style={{ margin: 0, color: '#38bdf8' }}>📌 {selectedTable.name}</h3>
                   <button onClick={() => setSelectedTable(null)} style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '22px', cursor: 'pointer' }}>✕</button>
                 </div>
 
-                <div style={{ marginTop: '15px', maxHeight: '350px', overflowY: 'auto' }}>
-                  {cart.length === 0 ? (
-                    <p style={{ color: '#9ca3af', textAlign: 'center', marginTop: '40px' }}>👈 Bấm chọn món bên trái để thêm vào order!</p>
+                {/* 1. HIỂN THỊ MÓN ĐÃ GỬI BẾP TRƯỚC ĐÓ (NẾU BÀN ĐANG CÓ KHÁCH) */}
+                {existingOrder && existingOrder.items && existingOrder.items.length > 0 && (
+                  <div style={{ marginTop: '15px', background: '#1f2937', padding: '10px', borderRadius: '8px', border: '1px solid #374151' }}>
+                    <div style={{ fontSize: '12px', color: '#fbbf24', fontWeight: 'bold', marginBottom: '8px' }}>
+                      📋 Món cũ đã gửi bếp ({existingOrder.items.length} món):
+                    </div>
+                    {existingOrder.items.map((oldItem, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
+                        <span>• {oldItem.name}</span>
+                        <span style={{ fontWeight: 'bold', color: '#10b981' }}>x{oldItem.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. HIỂN THỊ CÁC MÓN MỚI DANG CHỌN THÊM */}
+                <div style={{ marginTop: '15px' }}>
+                  <div style={{ fontSize: '13px', color: '#10b981', fontWeight: 'bold', marginBottom: '8px' }}>
+                    ➕ Món MỚI chọn gọi lượt này:
+                  </div>
+                  {newCart.length === 0 ? (
+                    <p style={{ color: '#6b7280', fontSize: '13px', fontStyle: 'italic', textAlign: 'center', marginTop: '20px' }}>
+                      Bấm chọn thực đơn bên trái để thêm món...
+                    </p>
                   ) : (
-                    cart.map((item, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', background: '#1f2937', padding: '8px 12px', borderRadius: '6px' }}>
+                    newCart.map((item) => (
+                      <div key={item.menuItemId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', background: '#1f2937', padding: '8px 12px', borderRadius: '6px' }}>
                         <div>
                           <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{item.name}</div>
-                          <div style={{ fontSize: '12px', color: '#9ca3af' }}>{item.price?.toLocaleString()}đ</div>
+                          <div style={{ fontSize: '12px', color: '#10b981' }}>{(item.price || 0).toLocaleString('vi-VN')}đ</div>
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <button onClick={() => handleUpdateQty(idx, -1)} style={{ background: '#ef4444', color: '#fff', border: 'none', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer' }}>-</button>
-                          <span style={{ fontWeight: 'bold' }}>{item.quantity}</span>
-                          <button onClick={() => handleAddToCart(item)} style={{ background: '#10b981', color: '#fff', border: 'none', width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer' }}>+</button>
+                          <button onClick={() => handleUpdateQty(item.menuItemId, -1)} style={{ background: '#ef4444', color: '#fff', border: 'none', width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
+                          <span style={{ fontWeight: 'bold', width: '18px', textAlign: 'center' }}>{item.quantity}</span>
+                          <button onClick={() => handleUpdateQty(item.menuItemId, 1)} style={{ background: '#10b981', color: '#fff', border: 'none', width: '26px', height: '26px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
                         </div>
                       </div>
                     ))
                   )}
                 </div>
+
               </div>
 
-              {/* NÚT BẤM HÀNH ĐỘNG */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #374151', fontSize: '18px', fontWeight: 'bold' }}>
-                  <span>Tổng tiền:</span>
-                  <span style={{ color: '#fbbf24' }}>{totalAmount.toLocaleString()} đ</span>
+              {/* NÚT THAO TÁC */}
+              <div style={{ borderTop: '1px solid #374151', paddingTop: '12px', marginTop: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '16px', fontWeight: 'bold' }}>
+                  <span>Tiền món mới:</span>
+                  <span style={{ color: '#fbbf24' }}>{newCartTotal.toLocaleString('vi-VN')} đ</span>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px' }}>
                   {checkIsOccupied(selectedTable) && (
                     <button
                       onClick={handleReleaseTable}
@@ -324,10 +357,20 @@ function WaiterInterface() {
 
                   <button
                     onClick={handleSubmitOrder}
-                    disabled={loading}
-                    style={{ flex: 2, padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}
+                    disabled={loading || newCart.length === 0}
+                    style={{
+                      flex: 2,
+                      padding: '12px',
+                      background: newCart.length > 0 ? '#10b981' : '#374151',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: 'bold',
+                      cursor: newCart.length > 0 ? 'pointer' : 'not-allowed',
+                      fontSize: '15px'
+                    }}
                   >
-                    {loading ? '⏳ Đang lưu...' : '🚀 XÁC NHẬN GỬI ORDER'}
+                    {loading ? '⏳ Đang gửi...' : '🚀 GỬI XUỐNG BẾP'}
                   </button>
                 </div>
               </div>
