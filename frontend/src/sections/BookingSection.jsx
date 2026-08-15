@@ -49,17 +49,18 @@ function BookingSection({ onBookTable }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     if (!formData.fullName.trim() || !formData.phone.trim()) {
       alert('⚠️ Vui lòng nhập đầy đủ Họ tên và Số điện thoại!');
       return;
     }
 
-    // 🔴 RÀNG BUỘC THỜI GIAN: Kiểm tra ngày + giờ chọn có ở quá khứ không
+    // 🔴 RÀNG BUỘC THỜI GIAN: Thông báo thân thiện khi chọn thời gian quá khứ
     const selectedDateTime = new Date(`${formData.date}T${formData.time}:00`);
     const now = new Date();
 
     if (selectedDateTime <= now) {
-      alert('❌ Thời gian đặt bàn phải ở trong TƯƠNG LAI! Vui lòng chọn lại ngày hoặc khung giờ khác.');
+      alert('⏰ Thời gian đặt bàn không hợp lệ (đã trôi qua). Vui lòng chọn lại ngày hoặc khung giờ khác nhé!');
       return;
     }
 
@@ -114,12 +115,12 @@ function BookingSection({ onBookTable }) {
           note: ''
         });
       } else {
-        const errorMessage = data?.message || `Lỗi từ hệ thống (Mã lỗi HTTP ${response.status})`;
-        alert(`❌ Đặt bàn thất bại: ${errorMessage}`);
+        const errorMessage = data?.message || 'Không thể gửi thông tin lúc này';
+        alert(`⚠️ ${errorMessage}. Vui lòng kiểm tra lại thông tin!`);
       }
     } catch (error) {
       console.error('Lỗi khi đặt bàn:', error);
-      alert('❌ Lỗi kết nối đến máy chủ! Vui lòng kiểm tra lại đường truyền.');
+      alert('📡 Lỗi kết nối máy chủ! Vui lòng kiểm tra lại đường truyền.');
     } finally {
       setIsSubmitting(false);
     }
